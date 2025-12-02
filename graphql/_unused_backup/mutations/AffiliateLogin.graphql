@@ -1,0 +1,23 @@
+mutation AffiliateLogin($email: String!, $password: String!, $name: String!) {
+  affiliateLogin(input: { email: $email, password: $password, name: $name }) {
+    jwt
+    user {
+      ...UserSession
+    }
+    affiliate {
+      ...AffiliateSession
+    }
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}
+
+mutation AffiliateAuth($password: String!) {
+  affiliateAuth(input: { password: $password }) {
+    success
+  }
+}

@@ -1,0 +1,33 @@
+fragment TopupProductUserInput on TopupProductUserInput {
+  id
+  instructionText
+  isHideData
+  fields {
+    ...TopupProductUserInputFields
+  }
+}
+
+fragment TopupProductUserInputFields on TopupProductUserInputFields {
+  id
+  tag
+  attrs {
+    ...TopupProductUserInputFieldsAttrs
+  }
+}
+
+fragment TopupProductUserInputFieldsAttrs on TopupProductUserInputFieldsAttrs {
+  id
+  name
+  key
+  placeholder
+  type
+  datas {
+    ...TopupProductAttrData
+  }
+}
+
+fragment TopupProductAttrData on TopupProductAttrData {
+  id
+  text
+  value
+}

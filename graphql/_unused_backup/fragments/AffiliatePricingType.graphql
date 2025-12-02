@@ -1,0 +1,7 @@
+fragment AffiliatePricing on AffiliatePricing {
+  id
+  costPrice
+  formattedCostPrice
+  formattedSellingPrice
+  sellingPrice
+}

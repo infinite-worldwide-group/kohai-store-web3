@@ -1,0 +1,26 @@
+mutation UpdateTheme(
+  $headerColor: String
+  $footerColor: String
+  $buttonColor: String
+  $backgroundColor: String
+  $textColor: String
+  $hyperlinkColor: String
+) {
+  updateStoreTheme(
+    input: {
+      headerColor: $headerColor
+      footerColor: $footerColor
+      buttonColor: $buttonColor
+      backgroundColor: $backgroundColor
+      textColor: $textColor
+      hyperlinkColor: $hyperlinkColor
+    }
+  ) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

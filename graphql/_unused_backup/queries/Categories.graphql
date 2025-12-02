@@ -1,0 +1,5 @@
+query Categories($categoryType: CategoryTypeEnum!) {
+  categories(categoryType: $categoryType) {
+    ...Category
+  }
+}

@@ -1,0 +1,20 @@
+mutation UpdateStoreLogo(
+  $logoText: File
+  $logoIcon: File
+  $description: String
+) {
+  updateStoreLogo(
+    input: {
+      logoText: $logoText
+      logoIcon: $logoIcon
+      description: $description
+    }
+  ) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

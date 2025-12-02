@@ -1,0 +1,7 @@
+fragment ListAffiliateWallet on AffiliateWallet {
+  id
+  amount
+  lockAmount
+  formattedAmount
+  formattedLockAmount
+}

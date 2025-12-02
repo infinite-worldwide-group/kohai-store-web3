@@ -1,0 +1,22 @@
+fragment Affiliate on Affiliate {
+  id
+  name
+  owner {
+    ...ListUser
+  }
+  affiliateWallet {
+    ...ListAffiliateWallet
+  }
+  fiatCurrency {
+    ...FiatCurrency
+  }
+  createdAt
+}
+
+fragment AffiliateSession on Affiliate {
+  id
+  name
+  affiliateWallet {
+    ...ListAffiliateWallet
+  }
+}

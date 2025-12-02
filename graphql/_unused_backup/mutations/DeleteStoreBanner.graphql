@@ -1,0 +1,10 @@
+mutation DeleteStoreBanner($bannerUrl: String!) {
+  deleteStoreBanner(bannerUrl: $bannerUrl) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

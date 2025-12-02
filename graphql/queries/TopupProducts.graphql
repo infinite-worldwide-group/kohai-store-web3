@@ -1,0 +1,33 @@
+query TopupProducts(
+  $categoryId: ID
+  $page: Int!
+  $search: String
+  $perPage: Int
+  $countryCode: String
+  $forStore: Boolean
+  $genre: String
+) {
+  topupProducts(
+    categoryId: $categoryId
+    page: $page
+    search: $search
+    perPage: $perPage
+    countryCode: $countryCode
+    forStore: $forStore
+    genre: $genre
+  ) {
+    ...TopupProductList
+  }
+}
+
+query TopupProduct($id: ID, $slug: String) {
+  topupProduct(id: $id, slug: $slug) {
+    ...TopupProduct
+  }
+}
+
+query StoreTopupProduct($id: ID, $slug: String) {
+  topupProduct(id: $id, slug: $slug) {
+    ...TopupProductDetail
+  }
+}

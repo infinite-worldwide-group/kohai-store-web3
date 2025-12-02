@@ -1,0 +1,18 @@
+query MyGameAccounts($topupProductId: Int, $approvedOnly: Boolean) {
+  myGameAccounts(topupProductId: $topupProductId, approvedOnly: $approvedOnly) {
+    id
+    accountId
+    serverId
+    inGameName
+    approve
+    displayName
+    userData
+    topupProduct {
+      id
+      title
+      slug
+    }
+    createdAt
+    updatedAt
+  }
+}

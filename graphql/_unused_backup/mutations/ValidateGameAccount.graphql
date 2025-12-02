@@ -1,0 +1,9 @@
+mutation ValidateGameAccount($id: ID!, $userInputs: [UserInputTypeInput!]!) {
+  validateGameAccount(input: { id: $id, userInputs: $userInputs }) {
+    message
+    ign
+    errors {
+      ...Error
+    }
+  }
+}

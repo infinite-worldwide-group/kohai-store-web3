@@ -1,0 +1,24 @@
+fragment AffiliateOrder on AffiliateOrder {
+  id
+  orderNumber
+  referenceNo
+  amount
+  originalAmount
+  status
+  createdAt
+  formattedAmount
+  formattedOriginalAmount
+  formattedTotalPaid
+  formattedTotalEarned
+  item
+  userData
+  errorMessage
+  email
+  transactionFee
+  paymentUrl
+  redirectUrl
+  fiatCurrency {
+    id
+    symbol
+  }
+}

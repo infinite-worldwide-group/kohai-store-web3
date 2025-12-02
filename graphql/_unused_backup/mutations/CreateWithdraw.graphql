@@ -1,0 +1,18 @@
+mutation CreateWithdraw($amount: Float!, $bankAccountId: ID!) {
+  createWithdrawRequest(
+    input: { amount: $amount, bankAccountId: $bankAccountId }
+  ) {
+    errors {
+      ...Error
+    }
+    affiliateTransaction {
+      id
+    }
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    affiliate {
+      ...AffiliateSession
+    }
+  }
+}

@@ -1,0 +1,69 @@
+query CurrentMerchant {
+  currentMerchant {
+    ...MerchantSession
+  }
+}
+
+query CurrentMerchantOrderStats {
+  currentMerchant {
+    id
+    pendingOrders
+    succeededOrders
+    failedOrders
+    refundedOrders
+    succeededOrdersChange
+    pendingOrdersChange
+    failedOrdersChange
+    refundedOrdersChange
+    topupProductPercentage {
+      ...TopupProductPercentage
+    }
+  }
+}
+
+query GameChart {
+  currentMerchant {
+    topupProductPercentage {
+      ...TopupProductPercentage
+    }
+  }
+}
+
+query MerchantOrders(
+  $page: Int!
+  $limit: Int
+  $search: String
+  $status: String
+) {
+  merchantOrders(page: $page, limit: $limit, search: $search, status: $status) {
+    data {
+      ...MerchantOrder
+    }
+    count
+  }
+}
+
+query MerchantTopupProducts(
+  $merchantId: ID!
+  $categoryId: ID
+  $page: Int!
+  $search: String
+  $perPage: Int
+) {
+  merchantTopupProducts(
+    merchantId: $merchantId
+    categoryId: $categoryId
+    page: $page
+    search: $search
+    perPage: $perPage
+  ) {
+    ...TopupProductList
+  }
+}
+
+query MerchantWhitelists {
+  currentMerchant {
+    id
+    whitelists
+  }
+}

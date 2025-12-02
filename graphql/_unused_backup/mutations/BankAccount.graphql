@@ -1,0 +1,49 @@
+mutation SetDefaultBank($bankAccountId: ID!, $isDefault: Boolean) {
+  updateAffiliateBankAccount(
+    input: { bankAccountId: $bankAccountId, isDefault: $isDefault }
+  ) {
+    bankAccount {
+      id
+    }
+    errors {
+      ...Error
+    }
+  }
+}
+
+mutation RemoveBankAccount($bankAccountId: ID!) {
+  removeAffiliateBankAccount(
+    input: { bankAccountId: $bankAccountId }
+  ) {
+    success
+    message
+    errors {
+      ...Error
+    }
+  }
+}
+
+mutation UpdateBankAccount(
+  $bankAccountId: ID!
+  $isDefault: Boolean
+  $name: String
+  $bankName: String
+  $bankAccountNumber: String
+) {
+  updateAffiliateBankAccount(
+    input: {
+      bankAccountId: $bankAccountId
+      isDefault: $isDefault
+      name: $name
+      bankName: $bankName
+      bankAccountNumber: $bankAccountNumber
+    }
+  ) {
+    bankAccount {
+      id
+    }
+    errors {
+      ...Error
+    }
+  }
+}

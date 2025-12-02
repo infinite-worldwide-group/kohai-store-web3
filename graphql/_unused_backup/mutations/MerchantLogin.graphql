@@ -1,0 +1,20 @@
+mutation MerchantLogin($email: String!, $password: String!) {
+  merchantLogin(input: { email: $email, password: $password }) {
+    jwt
+    user {
+      ...UserSession
+    }
+    merchant {
+      ...MerchantSession
+    }
+    errors {
+      ...Error
+    }
+  }
+}
+
+mutation MerchantAuth($password: String!) {
+  merchantAuth(input: { password: $password }) {
+    success
+  }
+}

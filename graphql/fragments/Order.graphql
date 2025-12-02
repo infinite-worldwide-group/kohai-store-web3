@@ -1,0 +1,25 @@
+fragment Order on Order {
+  id
+  orderNumber
+  amount
+  currency
+  cryptoAmount
+  cryptoCurrency
+  status
+  orderType
+  metadata
+  createdAt
+  updatedAt
+  cryptoTransaction {
+    id
+    amount
+    token
+    network
+    transactionSignature
+    transactionType
+    confirmations
+    state
+    direction
+    createdAt
+  }
+}

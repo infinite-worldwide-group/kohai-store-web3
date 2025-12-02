@@ -1,0 +1,31 @@
+mutation UpdateContacts(
+  $fbUrl: String
+  $twitchUrl: String
+  $youtubeUrl: String
+  $discordUrl: String
+  $whatsappNumber: String
+  $telegramNumber: String
+  $tiktokUrl: String
+  $instagramUrl: String
+  $wsChannelUrl: String
+  $csUrl: String
+) {
+  updateStoreContacts(
+    input: {
+      fbUrl: $fbUrl
+      twitchUrl: $twitchUrl
+      youtubeUrl: $youtubeUrl
+      discordUrl: $discordUrl
+      whatsappNumber: $whatsappNumber
+      telegramNumber: $telegramNumber
+      tiktokUrl: $tiktokUrl
+      instagramUrl: $instagramUrl
+      wsChannelUrl: $wsChannelUrl
+      csUrl: $csUrl
+    }
+  ) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+  }
+}

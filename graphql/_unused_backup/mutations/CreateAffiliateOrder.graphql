@@ -1,0 +1,31 @@
+mutation CreateAffiliateOrder(
+  $itemId: String!
+  $email: String!
+  $userInputs: [UserInputTypeInput!]!
+  $name: String!
+  $storeId: ID!
+  $redirectUrl: String!
+  $productId: String!
+  $gateway: Gateway!
+  $channel: String
+) {
+  createAffiliateOrder(
+    input: {
+      itemId: $itemId
+      email: $email
+      userInputs: $userInputs
+      name: $name
+      storeId: $storeId
+      redirectUrl: $redirectUrl
+      productId: $productId
+      gateway: $gateway
+      channel: $channel
+    }
+  ) {
+    errors {
+      ...Error
+    }
+    message
+    orderNumber
+  }
+}

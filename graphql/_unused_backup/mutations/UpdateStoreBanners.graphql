@@ -1,0 +1,10 @@
+mutation UpdateBanners($heroBanners: [File!]) {
+  updateStoreBanners(input: { heroBanners: $heroBanners }) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

@@ -1,0 +1,17 @@
+.logo {
+  height: 60px;
+}
+
+.fab {
+  position: fixed;
+  z-index: 30;
+  right: 20px;
+  bottom: 120px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 60px;
+  height: 60px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.7);
+}

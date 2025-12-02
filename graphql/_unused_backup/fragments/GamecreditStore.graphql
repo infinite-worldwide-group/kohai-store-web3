@@ -1,0 +1,40 @@
+fragment GamecreditStore on GamecreditStore {
+  id
+  name
+  markupRate
+  fiatCurrency {
+    ...FiatCurrency
+  }
+  iconUrl
+  logoUrl
+  headerColor
+  footerColor
+  buttonColor
+  backgroundColor
+  textColor
+  hyperlinkColor
+  fbUrl
+  twitchUrl
+  youtubeUrl
+  discordUrl
+  tiktokUrl
+  instagramUrl
+  csUrl
+  wsChannelUrl
+  description
+  whatsappNumber
+  telegramNumber
+  createdAt
+  vendorRates {
+    ...StoreVendorRate
+  }
+  exchangeRates {
+    ...VendorExchangeRate
+  }
+  formattedTotalEarned
+  formattedTotalSales
+  heroBanners
+  currency
+  isPremium
+  bgImageUrl
+}

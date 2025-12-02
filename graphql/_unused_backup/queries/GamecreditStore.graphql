@@ -1,0 +1,11 @@
+query GamecreditStore($id: ID!) {
+  gamecreditStore(id: $id) {
+    ...GamecreditStore
+  }
+}
+
+query SlugStore($slug: String!) {
+  slugStore(slug: $slug) {
+    ...GamecreditStore
+  }
+}

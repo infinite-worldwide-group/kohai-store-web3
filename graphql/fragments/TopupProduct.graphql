@@ -1,0 +1,57 @@
+fragment TopupProduct on TopupProduct {
+  id
+  originId
+  title
+  description
+  code
+  countryCodes
+  featured
+  publisher
+  isActive
+  logoUrl
+  avatarUrl
+  publisherLogoUrl
+  slug
+  category
+  userInput
+  vendorId
+  topupProductItems {
+    ...TopupProductItem
+  }
+}
+
+fragment TopupProductDetail on TopupProduct {
+  id
+  slug
+  originId
+  title
+  description
+  code
+  countryCodes
+  featured
+  publisher
+  isActive
+  logoUrl
+  avatarUrl
+  publisherLogoUrl
+  category
+  userInput
+  vendorId
+  topupProductItems {
+    ...TopupProductItem
+  }
+}
+
+fragment TopupProductList on TopupProduct {
+  id
+  originId
+  slug
+  title
+  featured
+  publisher
+  logoUrl
+  avatarUrl
+  publisherLogoUrl
+  countryCodes
+  category
+}

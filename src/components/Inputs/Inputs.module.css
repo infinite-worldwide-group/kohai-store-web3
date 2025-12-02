@@ -1,0 +1,9 @@
+.closeBtn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  padding: 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}

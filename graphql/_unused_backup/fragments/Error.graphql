@@ -1,0 +1,4 @@
+fragment Error on Error {
+  path
+  detail
+}

@@ -1,0 +1,8 @@
+mutation CancelAffiliateOrder($email: String!, $orderNumber: String!) {
+  cancelAffiliateOrder(input: { email: $email, orderNumber: $orderNumber }) {
+    errors {
+      ...Error
+    }
+    success
+  }
+}

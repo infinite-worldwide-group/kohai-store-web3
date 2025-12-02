@@ -1,0 +1,7 @@
+mutation UpdateMarkupRate($markupRate: Float!) {
+  updateMarkupRate(input: { markupRate: $markupRate }) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+  }
+}

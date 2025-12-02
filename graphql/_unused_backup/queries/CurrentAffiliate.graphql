@@ -1,0 +1,63 @@
+query CurrentAffiliate {
+  currentAffiliate {
+    ...AffiliateSession
+  }
+}
+
+query CurrentStore {
+  currentStore {
+    ...GamecreditStore
+  }
+}
+
+query StoreGameChart {
+  currentStore {
+    topupProductPercentage {
+      ...TopupProductPercentage
+    }
+  }
+}
+
+query AffiliateOrders(
+  $page: Int!
+  $limit: Int
+  $search: String
+  $status: String
+) {
+  affiliateOrders(
+    page: $page
+    limit: $limit
+    search: $search
+    status: $status
+  ) {
+    data {
+      ...AffiliateOrder
+    }
+    count
+  }
+}
+
+query AffiliateTransactions(
+  $page: Int!
+  $limit: Int
+  $fromDate: ISO8601DateTime
+  $toDate: ISO8601DateTime
+  $states: [AffiliateTransactionState!]
+  $transactionType: String
+) {
+  affiliateTransactions(
+    page: $page
+    limit: $limit
+    fromDate: $fromDate
+    toDate: $toDate
+    states: $states
+    transactionType: $transactionType
+  ) {
+    data {
+      ...AffiliateTransaction
+    }
+    count
+    formattedBalance
+    formattedTotalEarned
+  }
+}

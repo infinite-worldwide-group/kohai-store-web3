@@ -1,0 +1,10 @@
+.bgImage {
+  width: 100%;
+  height: auto;
+}
+
+.gameImage {
+  max-width: none;
+  position: relative;
+  height: 40%;
+}

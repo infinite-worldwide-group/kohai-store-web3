@@ -1,0 +1,11 @@
+mutation UserLogin($email: String!) {
+  userLogin(input: { email: $email }) {
+    user {
+      id
+      email
+    }
+    errors {
+      ...Error
+    }
+  }
+}

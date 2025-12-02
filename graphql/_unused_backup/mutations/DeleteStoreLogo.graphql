@@ -1,0 +1,10 @@
+mutation DeleteStoreLogo($logoType: String!) {
+  deleteStoreLogo(logoType: $logoType) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

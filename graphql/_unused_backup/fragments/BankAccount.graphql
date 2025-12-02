@@ -1,0 +1,11 @@
+fragment BankAccount on BankAccount {
+  bankAccountNumber
+  bankName
+  fiatCurrency {
+    ...FiatCurrency
+  }
+  id
+  isDefault
+  name
+  state
+}

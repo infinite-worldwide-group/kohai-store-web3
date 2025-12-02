@@ -1,0 +1,11 @@
+query AffiliateBankAccounts {
+  currentAffiliate {
+    id
+    bankAccounts {
+      ...BankAccount
+    }
+    defaultBank {
+      ...BankAccount
+    }
+  }
+}

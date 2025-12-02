@@ -1,0 +1,4 @@
+fragment TopupProductPercentage on TopupProductPercentage {
+  productName
+  percentage
+}

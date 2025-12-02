@@ -1,0 +1,7 @@
+fragment FiatCurrency on FiatCurrency {
+  id
+  isoCode
+  countryCode
+  symbol
+  name
+}

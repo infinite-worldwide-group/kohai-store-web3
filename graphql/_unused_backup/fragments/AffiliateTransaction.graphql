@@ -1,0 +1,14 @@
+fragment AffiliateTransaction on AffiliateTransaction {
+  affiliateOrder {
+    ...AffiliateOrder
+  }
+  amount
+  createdAt
+  formattedAmount
+  id
+  state
+  transactionType
+  item
+  isWithdrawal
+  rejectReasons
+}

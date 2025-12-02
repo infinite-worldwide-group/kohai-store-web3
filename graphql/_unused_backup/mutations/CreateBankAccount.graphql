@@ -1,0 +1,22 @@
+mutation CreateBankAccount(
+  $name: String!
+  $bankName: String!
+  $bankAccountNumber: String!
+  $isDefault: Boolean!
+) {
+  createAffiliateBankAccount(
+    input: {
+      name: $name
+      bankName: $bankName
+      bankAccountNumber: $bankAccountNumber
+      isDefault: $isDefault
+    }
+  ) {
+    errors {
+      ...Error
+    }
+    bankAccount {
+      id
+    }
+  }
+}

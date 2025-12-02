@@ -1,0 +1,11 @@
+fragment MerchantOrder on MerchantOrder {
+  id
+  orderNumber
+  amount
+  status
+  createdAt
+  displayAmount
+  trackingNumber
+  item
+  userData
+}

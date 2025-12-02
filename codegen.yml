@@ -1,0 +1,16 @@
+overwrite: true
+schema: "http://localhost:3000/graphql"
+documents:
+  - "graphql/**/*.graphql"
+  - "!graphql/_unused_backup/**/*.graphql"
+generates:
+  graphql/generated/graphql.tsx:
+    config:
+      withComponent: true
+    plugins:
+      - "typescript"
+      - "typescript-operations"
+      - "typescript-react-apollo"
+  ./graphql.schema.json:
+    plugins:
+      - "introspection"

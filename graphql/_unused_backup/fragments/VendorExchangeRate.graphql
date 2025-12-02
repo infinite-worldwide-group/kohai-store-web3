@@ -1,0 +1,4 @@
+fragment VendorExchangeRate on VendorExchangeRate {
+  id
+  rate
+}

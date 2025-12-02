@@ -1,0 +1,17 @@
+mutation AuthenticateWallet(
+  $walletAddress: String!
+  $signature: String
+  $message: String
+) {
+  authenticateWallet(
+    walletAddress: $walletAddress
+    signature: $signature
+    message: $message
+  ) {
+    user {
+      ...UserSession
+    }
+    token
+    errors
+  }
+}

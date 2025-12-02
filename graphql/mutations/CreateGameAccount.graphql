@@ -1,0 +1,32 @@
+mutation CreateGameAccount(
+  $topupProductId: Int!
+  $accountId: String!
+  $serverId: String
+  $inGameName: String
+  $userData: JSON!
+) {
+  createGameAccount(
+    topupProductId: $topupProductId
+    accountId: $accountId
+    serverId: $serverId
+    inGameName: $inGameName
+    userData: $userData
+  ) {
+    gameAccount {
+      id
+      accountId
+      serverId
+      inGameName
+      approve
+      displayName
+      userData
+      topupProduct {
+        id
+        title
+        slug
+      }
+      createdAt
+    }
+    errors
+  }
+}

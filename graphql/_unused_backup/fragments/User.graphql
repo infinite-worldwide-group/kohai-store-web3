@@ -1,0 +1,40 @@
+fragment UserSession on UserSession {
+  id
+  phoneNumber
+  nickname
+  icNumber
+  icName
+  discordId
+  email
+  birthday
+  gender
+  language
+  referralCode
+  updatedAt
+  referrerId
+  suspend
+  creditWalletId
+  creditWalletBalance
+  avatarUrl
+  coverPictureUrl
+  introText
+  countryCode
+  hasSecurityCode
+  securityCode
+  verified
+  managerName
+}
+
+fragment ListUser on User {
+  id
+  phoneNumber
+  nickname
+  email
+  gender
+  referralCode
+  updatedAt
+  suspend
+  avatarUrl
+  countryCode
+  verified
+}

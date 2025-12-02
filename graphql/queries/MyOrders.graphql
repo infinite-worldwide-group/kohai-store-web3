@@ -1,0 +1,5 @@
+query MyOrders($limit: Int) {
+  myOrders(limit: $limit) {
+    ...Order
+  }
+}

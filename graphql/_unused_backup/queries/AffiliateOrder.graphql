@@ -1,0 +1,14 @@
+query AffiliateOrder($orderNumber: String!) {
+  affiliateOrder(orderNumber: $orderNumber) {
+    ...AffiliateOrder
+  }
+}
+
+query CheckPaymentUrl($orderNumber: String!) {
+  affiliateOrder(orderNumber: $orderNumber) {
+    id
+    paymentUrl
+    orderNumber
+    status
+  }
+}

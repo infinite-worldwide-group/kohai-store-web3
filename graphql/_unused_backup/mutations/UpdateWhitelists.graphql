@@ -1,0 +1,5 @@
+mutation UpdateWhitelists($whitelists: String!) {
+  updateWhitelists(input: { whitelists: $whitelists }) {
+    success
+  }
+}

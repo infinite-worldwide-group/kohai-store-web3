@@ -1,0 +1,15 @@
+.logoIcon {
+  max-width: 100px;
+  height: 100%;
+}
+
+.logoText {
+  max-width: 300px;
+  height: 80%;
+}
+
+.drawerBtn {
+  right: 20px;
+  top: 30px;
+  padding: 10px;
+}

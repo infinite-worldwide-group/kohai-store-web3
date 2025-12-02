@@ -1,0 +1,16 @@
+mutation CreateOrder(
+  $topupProductItemId: ID!
+  $transactionSignature: String!
+  $userData: JSON
+) {
+  createOrder(
+    topupProductItemId: $topupProductItemId
+    transactionSignature: $transactionSignature
+    userData: $userData
+  ) {
+    errors
+    order {
+      ...Order
+    }
+  }
+}

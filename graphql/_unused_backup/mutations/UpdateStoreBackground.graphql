@@ -1,0 +1,10 @@
+mutation UpdateStoreBackground($bgImage: File) {
+  updateStoreBackground(input: { bgImage: $bgImage }) {
+    gamecreditStore {
+      ...GamecreditStore
+    }
+    errors {
+      ...Error
+    }
+  }
+}

@@ -1,0 +1,14 @@
+mutation ValidateGameAccount($gameAccountId: Int!) {
+  validateGameAccountMutation(gameAccountId: $gameAccountId) {
+    gameAccount {
+      id
+      accountId
+      serverId
+      inGameName
+      approve
+      displayName
+    }
+    success
+    errors
+  }
+}

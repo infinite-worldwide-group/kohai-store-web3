@@ -1,0 +1,6 @@
+mutation DeleteGameAccount($gameAccountId: Int!) {
+  deleteGameAccount(gameAccountId: $gameAccountId) {
+    success
+    errors
+  }
+}

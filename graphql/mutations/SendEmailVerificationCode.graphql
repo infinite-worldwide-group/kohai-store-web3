@@ -1,0 +1,7 @@
+mutation SendEmailVerificationCode($email: String!) {
+  sendEmailVerificationCode(email: $email) {
+    success
+    message
+    errors
+  }
+}

@@ -1,0 +1,16 @@
+fragment GameAccountFields on GameAccount {
+  id
+  accountId
+  serverId
+  inGameName
+  approve
+  displayName
+  userData
+  topupProduct {
+    id
+    title
+    slug
+  }
+  createdAt
+  updatedAt
+}

@@ -1,0 +1,4 @@
+fragment StoreVendorRate on StoreVendorRate {
+  id
+  rate
+}

@@ -1,0 +1,8 @@
+query CheckPendingOrder($email: String!) {
+  checkPendingOrder(email: $email) {
+    id
+    status
+    paymentUrl
+    orderNumber
+  }
+}

@@ -1,0 +1,11 @@
+fragment TopupProductItem on TopupProductItem {
+  id
+  name
+  displayName
+  icon
+  price
+  formattedPrice
+  active
+  originId
+  topupProductId
+}

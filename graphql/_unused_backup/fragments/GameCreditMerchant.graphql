@@ -1,0 +1,28 @@
+fragment MerchantSession on GameCreditMerchant {
+  id
+  name
+  callbackKey
+  callbackUrl
+  secretKey
+  status
+  merchantId
+  whitelists
+}
+
+fragment GameCreditMerchant on GameCreditMerchant {
+  id
+  name
+  callbackKey
+  callbackUrl
+  secretKey
+  status
+  owner {
+    ...ListUser
+  }
+  users {
+    ...ListUser
+  }
+  merchantTopupProducts {
+    ...MerchantTopupProduct
+  }
+}

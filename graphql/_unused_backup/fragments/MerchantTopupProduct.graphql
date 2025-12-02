@@ -1,0 +1,6 @@
+fragment MerchantTopupProduct on MerchantTopupProduct {
+  id
+  topupProduct {
+    ...TopupProduct
+  }
+}

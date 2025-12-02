@@ -1,0 +1,5 @@
+fragment BankNameOption on BankNameOption {
+    id
+    label
+    value
+}

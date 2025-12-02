@@ -1,0 +1,7 @@
+fragment UserSession on User {
+  id
+  email
+  emailVerified
+  emailVerifiedAt
+  updatedAt
+}
