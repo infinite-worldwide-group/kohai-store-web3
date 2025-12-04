@@ -15,7 +15,7 @@ import { useState, useEffect } from "react";
  */
 
 const WalletButton = () => {
-  const { isConnected, address, connect, disconnect, getBalance, isConnecting } = useWallet();
+  const { isConnected, address, connect, disconnect, getBalance, getTokenBalance, isConnecting } = useWallet();
   const { data: currentUserData, refetch: refetchUserData, loading: userDataLoading } = useCurrentUserQuery({
     skip: !isConnected || !address,
     fetchPolicy: 'cache-and-network', // Use cache first for instant display, then fetch fresh
@@ -154,22 +154,22 @@ const WalletButton = () => {
         setIsLoadingUserData(false);
       }
 
-      // Refetch balance for new wallet
+      // Refetch USDT balance for new wallet
       if (event.detail.newAddress) {
-        console.log('Fetching balance for new wallet...');
+        console.log('Fetching USDT balance for new wallet...');
         try {
-          const newBalance = await getBalance();
+          const newBalance = await getTokenBalance('USDT');
           setBalance(newBalance);
-          console.log('✅ Balance updated:', newBalance);
+          console.log('✅ USDT Balance updated:', newBalance);
         } catch (error) {
-          console.error('❌ Error fetching balance:', error);
+          console.error('❌ Error fetching USDT balance:', error);
         }
       }
     };
 
     window.addEventListener('wallet-switched', handleWalletSwitch);
     return () => window.removeEventListener('wallet-switched', handleWalletSwitch);
-  }, [refetchUserData, getBalance]);
+  }, [refetchUserData, getTokenBalance]);
 
   // Force re-render when user data changes AND hide loading state
   useEffect(() => {
@@ -203,15 +203,15 @@ const WalletButton = () => {
     }
   }, [currentUserData, userDataLoading, address, isLoadingUserData]);
 
-  // Fetch balance when connected
+  // Fetch USDT balance when connected
   useEffect(() => {
     if (isConnected && address) {
-      getBalance().then(setBalance);
+      getTokenBalance('USDT').then(setBalance);
     } else {
       setBalance(null);
       setShowDropdown(false); // Close dropdown when disconnected
     }
-  }, [isConnected, address, getBalance]);
+  }, [isConnected, address, getTokenBalance]);
 
   // Shorten address for display (0x1234...5678)
   const shortenAddress = (addr: string) => {
@@ -347,9 +347,9 @@ const WalletButton = () => {
 
               {/* Balance */}
               <div className="mb-3 rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-400 mb-1">Balance</p>
+                <p className="text-xs text-gray-400 mb-1">USDT Balance</p>
                 <p className="text-lg font-bold">
-                  {balance !== null ? `${balance.toFixed(4)} SOL` : 'Loading...'}
+                  {balance !== null ? `${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} USDT` : 'Loading...'}
                 </p>
               </div>
 

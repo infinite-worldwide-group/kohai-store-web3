@@ -69,4 +69,5 @@ export const networks = {
 };
 
 // Default network (change to mainnet for production)
+// Currently using devnet for testing - change to solana for production
 export const defaultNetwork = solanaDevnet;

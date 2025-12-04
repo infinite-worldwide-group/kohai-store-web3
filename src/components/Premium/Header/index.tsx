@@ -4,6 +4,7 @@ import Link from "next/link";
 import SearchDrawer from "@/components/Inputs/SearchDrawer";
 import SearchPremium from "@/components/Inputs/SearchPremium";
 import WalletButton from "@/components/WalletConnect/WalletButton";
+import { HeaderCurrencySelector } from "@/components/Store/CurrencySelector";
 import { useEffect, useState } from "react";
 import { CiSearch } from "react-icons/ci";
 import styles from "./Header.module.css";
@@ -42,6 +43,7 @@ const HeaderPremium = (props: { slug?: string }) => {
           <div className="flex items-center justify-between gap-3">
             <SearchPremium slug={props.slug} />
             <div className="flex items-center gap-3">
+              <HeaderCurrencySelector />
               <WalletButton />
               <div
                 className={`rounded-md bg-white/10 backdrop-blur-md md:hidden ${styles.drawerBtn}`}

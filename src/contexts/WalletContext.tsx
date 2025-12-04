@@ -4,9 +4,17 @@ import { createContext, ReactNode, useContext, useEffect, useState, useRef } fro
 import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
 import type { Provider } from '@reown/appkit-adapter-solana/react';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import {
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAccount,
+  TokenAccountNotFoundError
+} from '@solana/spl-token';
 import { useAuthenticateWalletMutation } from "graphql/generated/graphql";
 import { modal } from '@/lib/reown-config';
 import { clearApolloCache } from '@/lib/apollo-client';
+import { getTokenMintAddress, getNetworkFromRPC, isNativeSOL, getTokenConfig } from '@/lib/tokens';
 
 interface WalletContextType {
   // Connection state
@@ -20,8 +28,12 @@ interface WalletContextType {
 
   // Solana specific
   signMessage: (message: string) => Promise<string | null>;
-  sendTransaction: (to: string, amount: number) => Promise<string | null>;
-  getBalance: () => Promise<number | null>;
+  sendTransaction: (to: string, amount: number, tokenSymbol?: string) => Promise<string | null>;
+  getBalance: (tokenSymbol?: string) => Promise<number | null>;
+
+  // SPL Token specific
+  getTokenBalance: (tokenSymbol: string) => Promise<number | null>;
+  sendTokenTransaction: (to: string, amount: number, tokenSymbol: string) => Promise<string | null>;
 
   // Reown modal
   openModal: () => void;
@@ -47,17 +59,114 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Track the actual extension address (may differ from AppKit)
   const [extensionAddress, setExtensionAddress] = useState<string | undefined>(undefined);
 
+  // FORCE clear stale wallet data on mount and sync to extension
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    // Check if we have a serious mismatch on initial load
+    const phantom = (window as any).phantom?.solana;
+    const solflare = (window as any).solflare;
+    const actualAddress = phantom?.publicKey?.toString() || solflare?.publicKey?.toString();
+
+    if (actualAddress && appKitAddress && actualAddress !== appKitAddress) {
+      console.warn('⚠️ MOUNT: Stale wallet address detected on initial load');
+      console.log('Extension wallet:', actualAddress);
+      console.log('AppKit cached:', appKitAddress);
+      console.log('🧹 Clearing stale AppKit cache and syncing...');
+
+      // Clear JWT token for old address
+      window.localStorage.removeItem('jwtToken');
+
+      // Clear stale WalletConnect/AppKit storage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && (
+          key.startsWith('wc@2:') ||
+          key.startsWith('@w3m/') ||
+          key.startsWith('W3M_') ||
+          key.includes('reown')
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => {
+        console.log('  Removing:', key);
+        window.localStorage.removeItem(key);
+      });
+
+      // Force sync to extension address immediately
+      setExtensionAddress(actualAddress);
+
+      // Clear Apollo cache to refetch with new address
+      window.dispatchEvent(new CustomEvent('clear-apollo-cache'));
+
+      console.log('✅ Synced to extension address:', actualAddress);
+      console.log('♻️ App will re-authenticate with correct address');
+    }
+  }, []); // Run once on mount
+
   // Local state to immediately reflect disconnect
   const isConnected = !isDisconnecting && appKitIsConnected;
+
+  // RPC endpoint - use environment variable or default to devnet for testing
+  const rpcEndpoint = process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.devnet.solana.com';
+  const connection = new Connection(rpcEndpoint);
 
   // Use extension address if available and different from AppKit, otherwise use AppKit address
   const address = !isDisconnecting
     ? (extensionAddress || appKitAddress)
     : undefined;
 
-  // RPC endpoint - use environment variable or default to devnet
-  const rpcEndpoint = process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.devnet.solana.com';
-  const connection = new Connection(rpcEndpoint);
+  // DEBUG: Log address changes and verify wallet extension
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isConnected) return;
+
+    // Check actual wallet extension
+    const phantom = (window as any).phantom?.solana;
+    const solflare = (window as any).solflare;
+
+    const extensionActualAddress = phantom?.publicKey?.toString() || solflare?.publicKey?.toString();
+
+    console.log('🔍 WALLET DEBUG:', {
+      displayedAddress: address,
+      appKitAddress: appKitAddress,
+      extensionAddress: extensionAddress,
+      extensionActualAddress: extensionActualAddress,
+      isExtensionOverride: !!extensionAddress,
+      source: extensionAddress ? 'Extension Override' : 'AppKit',
+      MISMATCH: extensionActualAddress && address && extensionActualAddress !== address ? '⚠️ YES - ADDRESS MISMATCH!' : 'No',
+      rpcEndpoint: rpcEndpoint,
+      network: rpcEndpoint.includes('devnet') ? 'DEVNET' : rpcEndpoint.includes('testnet') ? 'TESTNET' : 'MAINNET'
+    });
+
+    // Alert and FIX if there's a mismatch
+    if (extensionActualAddress && address && extensionActualAddress !== address) {
+      console.warn('⚠️ Wallet address mismatch detected (AppKit cache out of sync)');
+      console.warn('Extension has:', extensionActualAddress);
+      console.warn('App was using:', address);
+      console.log('🔧 Auto-fixing: Syncing to extension address...');
+
+      // FORCE sync to extension address immediately
+      setExtensionAddress(extensionActualAddress);
+
+      // Clear old JWT token
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('jwtToken');
+      }
+
+      // Force re-authentication with correct address
+      setForceUpdate(prev => prev + 1);
+
+      // Clear Apollo cache
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('clear-apollo-cache'));
+      }
+
+      console.log('✅ Address synced to:', extensionActualAddress);
+      console.log('♻️ Re-authenticating with correct address...');
+    }
+  }, [address, appKitAddress, extensionAddress, rpcEndpoint, isConnected]);
 
   const connect = () => {
     setIsConnecting(true);
@@ -152,7 +261,16 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const sendTransaction = async (to: string, amount: number): Promise<string | null> => {
+  const sendTransaction = async (to: string, amount: number, tokenSymbol: string = 'SOL'): Promise<string | null> => {
+    // Delegate to appropriate method based on token type
+    if (isNativeSOL(tokenSymbol)) {
+      return sendSOLTransaction(to, amount);
+    } else {
+      return sendTokenTransaction(to, amount, tokenSymbol);
+    }
+  };
+
+  const sendSOLTransaction = async (to: string, amount: number): Promise<string | null> => {
     if (!walletProvider || !address) {
       console.error('Wallet not connected');
       throw new Error('Wallet not connected');
@@ -308,7 +426,178 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const getBalance = async (): Promise<number | null> => {
+  const sendTokenTransaction = async (to: string, amount: number, tokenSymbol: string): Promise<string | null> => {
+    if (!walletProvider || !address) {
+      console.error('Wallet not connected');
+      throw new Error('Wallet not connected');
+    }
+
+    try {
+      const tokenConfig = getTokenConfig(tokenSymbol);
+      if (!tokenConfig) {
+        throw new Error(`Token ${tokenSymbol} not supported`);
+      }
+
+      const network = getNetworkFromRPC(rpcEndpoint);
+      const mintAddress = getTokenMintAddress(tokenSymbol, network);
+      const fromPubkey = new PublicKey(address);
+      const toPubkey = new PublicKey(to);
+
+      // Get sender's token account
+      const fromTokenAccount = await getAssociatedTokenAddress(
+        mintAddress,
+        fromPubkey
+      );
+
+      // Get recipient's token account
+      const toTokenAccount = await getAssociatedTokenAddress(
+        mintAddress,
+        toPubkey
+      );
+
+      // Calculate token amount (considering decimals)
+      const tokenAmount = Math.floor(amount * Math.pow(10, tokenConfig.decimals));
+
+      console.log('SPL Token Transfer Details:', {
+        token: tokenSymbol,
+        from: fromPubkey.toString(),
+        to: toPubkey.toString(),
+        amount: amount,
+        tokenAmount: tokenAmount,
+        decimals: tokenConfig.decimals,
+        fromTokenAccount: fromTokenAccount.toString(),
+        toTokenAccount: toTokenAccount.toString(),
+      });
+
+      // Check if sender has token account
+      let senderAccountExists = false;
+      try {
+        await getAccount(connection, fromTokenAccount);
+        senderAccountExists = true;
+      } catch (error: any) {
+        if (error instanceof TokenAccountNotFoundError) {
+          throw new Error(`You don't have a ${tokenSymbol} token account. Please fund your wallet with ${tokenSymbol} first.`);
+        }
+        throw error;
+      }
+
+      // Check token balance
+      const balance = await getTokenBalance(tokenSymbol);
+      if (balance === null || balance < amount) {
+        throw new Error(
+          `Insufficient ${tokenSymbol} balance. You have ${balance?.toFixed(tokenConfig.decimals) || 0} ${tokenSymbol} but need ${amount} ${tokenSymbol}.`
+        );
+      }
+
+      const transaction = new Transaction();
+
+      // Check if recipient has token account, if not create it
+      let recipientAccountExists = false;
+      try {
+        await getAccount(connection, toTokenAccount);
+        recipientAccountExists = true;
+      } catch (error: any) {
+        if (error instanceof TokenAccountNotFoundError) {
+          console.log('Recipient token account does not exist, will create it');
+          // Add instruction to create associated token account
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              fromPubkey, // payer
+              toTokenAccount, // token account to create
+              toPubkey, // owner of new account
+              mintAddress // mint
+            )
+          );
+        } else {
+          throw error;
+        }
+      }
+
+      // Add transfer instruction
+      transaction.add(
+        createTransferInstruction(
+          fromTokenAccount, // source
+          toTokenAccount, // destination
+          fromPubkey, // owner
+          tokenAmount // amount (in smallest units)
+        )
+      );
+
+      // Get latest blockhash
+      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = fromPubkey;
+
+      console.log('Sending SPL token transaction...');
+
+      let signature: string;
+
+      // Try sendTransaction method first
+      if (typeof walletProvider.sendTransaction === 'function') {
+        try {
+          signature = await walletProvider.sendTransaction(transaction, connection, {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+          console.log('SPL token transaction sent successfully');
+        } catch (sendError: any) {
+          console.error('Error with sendTransaction:', sendError);
+          // Fallback to sign + send
+          const signedTransaction = await walletProvider.signTransaction(transaction);
+          const rawTransaction = signedTransaction.serialize();
+          signature = await connection.sendRawTransaction(rawTransaction, {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+          });
+        }
+      } else {
+        // Sign and send
+        const signedTransaction = await walletProvider.signTransaction(transaction);
+        const rawTransaction = signedTransaction.serialize();
+        signature = await connection.sendRawTransaction(rawTransaction, {
+          skipPreflight: false,
+          preflightCommitment: 'confirmed',
+        });
+      }
+
+      console.log('SPL token transaction sent:', signature);
+
+      // Wait for confirmation
+      console.log('Waiting for confirmation...');
+      await connection.confirmTransaction({
+        signature,
+        blockhash,
+        lastValidBlockHeight
+      });
+
+      console.log('SPL token transaction confirmed!');
+      return signature;
+    } catch (error: any) {
+      console.error('Error sending SPL token transaction:', error);
+
+      // Provide helpful error messages
+      if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
+        throw new Error('Transaction rejected by user');
+      } else if (error.message?.includes('Insufficient')) {
+        throw error; // Re-throw our custom balance error
+      } else if (error.message?.includes('token account')) {
+        throw error; // Re-throw token account errors
+      }
+
+      const errorMsg = error.message || error.toString() || 'Unknown error occurred';
+      throw new Error(`SPL Token transfer failed: ${errorMsg}`);
+    }
+  };
+
+  const getBalance = async (tokenSymbol: string = 'SOL'): Promise<number | null> => {
+    if (isNativeSOL(tokenSymbol)) {
+      return getSOLBalance();
+    } else {
+      return getTokenBalance(tokenSymbol);
+    }
+  };
+
+  const getSOLBalance = async (): Promise<number | null> => {
     if (!address) return null;
 
     try {
@@ -316,7 +605,44 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const balance = await connection.getBalance(pubkey);
       return balance / LAMPORTS_PER_SOL;
     } catch (error) {
-      console.error('Error getting balance:', error);
+      console.error('Error getting SOL balance:', error);
+      return null;
+    }
+  };
+
+  const getTokenBalance = async (tokenSymbol: string): Promise<number | null> => {
+    if (!address) return null;
+
+    try {
+      const tokenConfig = getTokenConfig(tokenSymbol);
+      if (!tokenConfig) {
+        console.error(`Token ${tokenSymbol} not supported`);
+        return null;
+      }
+
+      const network = getNetworkFromRPC(rpcEndpoint);
+      const mintAddress = getTokenMintAddress(tokenSymbol, network);
+      const pubkey = new PublicKey(address);
+
+      // Get associated token account address
+      const tokenAccount = await getAssociatedTokenAddress(
+        mintAddress,
+        pubkey
+      );
+
+      try {
+        const accountInfo = await getAccount(connection, tokenAccount);
+        const balance = Number(accountInfo.amount) / Math.pow(10, tokenConfig.decimals);
+        return balance;
+      } catch (error: any) {
+        if (error instanceof TokenAccountNotFoundError) {
+          // Token account doesn't exist, balance is 0
+          return 0;
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error(`Error getting ${tokenSymbol} balance:`, error);
       return null;
     }
   };
@@ -527,10 +853,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }
 
         if (phantomAddress !== currentEffectiveAddress) {
-          console.log('⚠️ MISMATCH DETECTED! Phantom extension out of sync');
-          console.log('Phantom has:', phantomAddress);
-          console.log('UI showing:', currentEffectiveAddress);
-          console.log('Updating UI to match Phantom...');
+          console.warn('⚠️ Address mismatch detected (syncing to Phantom)');
+          console.log('Phantom wallet:', phantomAddress);
+          console.log('App was using:', currentEffectiveAddress);
+          console.log('🔧 Syncing to Phantom address...');
 
           // Update extension address
           setExtensionAddress(phantomAddress);
@@ -573,9 +899,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       if (solflare?.isConnected && solflare.publicKey) {
         const solflareAddress = solflare.publicKey.toString();
         if (solflareAddress !== currentEffectiveAddress) {
-          console.log('⚠️ Solflare extension out of sync - updating');
-          console.log('Solflare:', solflareAddress);
-          console.log('Current:', currentEffectiveAddress);
+          console.warn('⚠️ Address mismatch detected (syncing to Solflare)');
+          console.log('Solflare wallet:', solflareAddress);
+          console.log('App was using:', currentEffectiveAddress);
+          console.log('🔧 Syncing to Solflare address...');
 
           // Update extension address
           setExtensionAddress(solflareAddress);
@@ -734,6 +1061,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     signMessage,
     sendTransaction,
     getBalance,
+    getTokenBalance,
+    sendTokenTransaction,
     openModal,
     closeModal,
   };

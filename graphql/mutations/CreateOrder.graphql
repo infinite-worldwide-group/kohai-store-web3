@@ -14,3 +14,7 @@ mutation CreateOrder(
     }
   }
 }
+
+# TODO: Add these parameters when backend is ready:
+# $cryptoCurrency: String
+# $cryptoAmount: Float

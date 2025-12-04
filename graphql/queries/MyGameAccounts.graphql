@@ -6,6 +6,7 @@ query MyGameAccounts($topupProductId: Int, $approvedOnly: Boolean) {
     inGameName
     approve
     displayName
+    status
     userData
     topupProduct {
       id

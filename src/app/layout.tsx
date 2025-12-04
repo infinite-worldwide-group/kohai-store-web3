@@ -7,6 +7,7 @@ import { MerchantProvider } from "@/contexts/MerchantContext";
 import { StoreProvider } from "@/contexts/StoreContext";
 import { UserProvider } from "@/contexts/UserContext";
 import { WalletProvider } from "@/contexts/WalletContext";
+import { CurrencyProvider } from "@/components/Store/CurrencySelector";
 import "@/css/satoshi.css";
 import "@/css/style.css";
 import CustomApolloProvider from "@/lib/CustomApolloProvider";
@@ -37,20 +38,22 @@ export default function RootLayout({
         <GoogleAnalytics />
         <CustomApolloProvider>
           <WalletProvider>
-            <UserProvider>
-              <EmailVerificationProvider>
-                <MerchantProvider>
-                  <AffiliateProvider>
-                    <StoreProvider>
-                      <div style={{ backgroundColor: "rgb(0, 0, 0)", color: "#ffffff" }}>
-                        <main>{children}</main>
-                      </div>
-                      <SupportFab />
-                    </StoreProvider>
-                  </AffiliateProvider>
-                </MerchantProvider>
-              </EmailVerificationProvider>
-            </UserProvider>
+            <CurrencyProvider>
+              <UserProvider>
+                <EmailVerificationProvider>
+                  <MerchantProvider>
+                    <AffiliateProvider>
+                      <StoreProvider>
+                        <div style={{ backgroundColor: "rgb(0, 0, 0)", color: "#ffffff" }}>
+                          <main>{children}</main>
+                        </div>
+                        <SupportFab />
+                      </StoreProvider>
+                    </AffiliateProvider>
+                  </MerchantProvider>
+                </EmailVerificationProvider>
+              </UserProvider>
+            </CurrencyProvider>
           </WalletProvider>
         </CustomApolloProvider>
       </body>

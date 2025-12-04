@@ -5,6 +5,7 @@ fragment GameAccountFields on GameAccount {
   inGameName
   approve
   displayName
+  status
   userData
   topupProduct {
     id

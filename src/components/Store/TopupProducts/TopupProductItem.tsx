@@ -2,6 +2,8 @@
 
 import { useStore } from "@/contexts/StoreContext";
 import { isColorDark } from "@/lib/ColorUtils";
+import { useCurrency } from "@/components/Store/CurrencySelector/HeaderCurrencySelector";
+import { useCurrencyConversion, useCurrencyFormatter } from "@/hooks/useCurrencyConversion";
 import styles from "./TopupProduct.module.css";
 
 const TopupProductItem = (props: {
@@ -11,6 +13,9 @@ const TopupProductItem = (props: {
   showCost: boolean;
 }) => {
   const { store } = useStore();
+  const { selectedCurrency } = useCurrency();
+  const { convertPrice } = useCurrencyConversion();
+  const { formatPrice } = useCurrencyFormatter();
 
   const {
     name,
@@ -20,52 +25,22 @@ const TopupProductItem = (props: {
     icon,
     formattedPrice,
     price,
+    currency,
     storePricing,
   } = props.item;
 
-  // Detect currency from product name
-  const detectCurrency = (): string => {
-    const productName = (displayName || name || '').toUpperCase();
-
-    // Malaysian Ringgit
-    if (productName.includes('RM') && productName.includes('MY')) return 'MYR';
-    if (productName.includes('MYR')) return 'MYR';
-
-    // Singapore Dollar
-    if (productName.includes('SGD') || (productName.includes('SG') && productName.includes('$'))) return 'SGD';
-
-    // Indonesian Rupiah
-    if (productName.includes('IDR') || productName.includes('INDONESIA')) return 'IDR';
-
-    // Thai Baht
-    if (productName.includes('THB') || productName.includes('THAILAND')) return 'THB';
-
-    // Default to USD
-    return 'USD';
-  };
-
-  // Format price with proper currency symbol
-  const formatPriceWithCurrency = (priceValue: number, currency: string): string => {
-    switch (currency) {
-      case 'MYR':
-        return `RM ${priceValue.toFixed(2)}`;
-      case 'SGD':
-        return `S$${priceValue.toFixed(2)}`;
-      case 'IDR':
-        return `Rp ${priceValue.toFixed(0)}`;
-      case 'THB':
-        return `฿${priceValue.toFixed(2)}`;
-      case 'USD':
-      default:
-        return `$${priceValue.toFixed(2)}`;
-    }
-  };
-
-  const currency = detectCurrency();
   const priceValue = price || 0;
+  
+  // Use the currency field from the item data, default to MYR if not specified
+  const originalCurrency = currency || 'MYR';
+  
+  // Convert price from original currency to selected currency
+  const convertedPrice = selectedCurrency.code === originalCurrency 
+    ? priceValue 
+    : convertPrice(priceValue, originalCurrency, selectedCurrency.code) || priceValue;
 
-  // Use formatted fiat price instead of backend's formattedPrice
-  const formattedSellingPrice = formatPriceWithCurrency(priceValue, currency);
+  // Format price with selected currency
+  const formattedSellingPrice = formatPrice(convertedPrice, selectedCurrency);
   const formattedCostPrice = storePricing?.formattedCostPrice || '';
   const itemIcon = iconUrl || icon;
 

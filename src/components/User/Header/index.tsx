@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import Search from "@/components/Inputs/Search";
 import WalletButton from "@/components/WalletConnect/WalletButton";
+import { HeaderCurrencySelector } from "@/components/Store/CurrencySelector";
 import styles from "./Header.module.css";
 
 const Header = (props: { slug?: string }) => {
@@ -23,6 +24,7 @@ const Header = (props: { slug?: string }) => {
           </Link>
           <div className="flex items-center gap-3 flex-1 justify-end">
             <Search slug={props.slug} />
+            <HeaderCurrencySelector />
             <WalletButton />
           </div>
         </div>

@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, TopupProductItemFragment } from "graphql/generated/graphql";
+import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, useValidateGameAccountMutation, TopupProductItemFragment } from "graphql/generated/graphql";
 import { useWallet } from "@/contexts/WalletContext";
+import { useCurrency } from "@/components/Store/CurrencySelector";
 import dynamic from "next/dynamic";
-import { IoChevronDown } from "react-icons/io5";
 
 const EmailVerificationModal = dynamic(() => import("@/components/Store/EmailVerification/EmailVerificationModal"), {
   ssr: false,
@@ -20,7 +20,10 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [authenticateWallet] = useAuthenticateWalletMutation();
   const [createGameAccount] = useCreateGameAccountMutation();
   const [deleteGameAccount] = useDeleteGameAccountMutation();
-  const { isConnected, address, sendTransaction, connect } = useWallet();
+  const [validateGameAccount] = useValidateGameAccountMutation();
+  const { isConnected, address, sendTransaction, connect, getBalance } = useWallet();
+  const { selectedCurrency, convertPrice, formatPrice } = useCurrency();
+  
   const { data: currentUserData, refetch: refetchUser } = useCurrentUserQuery({
     skip: !isConnected,
     fetchPolicy: 'cache-and-network', // Use cache first, but fetch fresh data
@@ -30,16 +33,24 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [userData, setUserData] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [solPrice, setSolPrice] = useState<number | null>(null);
-  const [loadingSolPrice, setLoadingSolPrice] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [selectedGameAccountId, setSelectedGameAccountId] = useState<string | null>(null);
-  const [manualEntryFields, setManualEntryFields] = useState<Set<string>>(new Set());
-  const [openDropdowns, setOpenDropdowns] = useState<Set<string>>(new Set());
-  const dropdownRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [validationStatus, setValidationStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
   const [validationMessage, setValidationMessage] = useState<string>('');
   const validationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [verifiedIGN, setVerifiedIGN] = useState<string | null>(null);
+  const [tempAccountIdForVerify, setTempAccountIdForVerify] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmModalData, setConfirmModalData] = useState<{
+    ign: string | null;
+    gameId: string;
+    amount: number;
+    productName: string;
+    isDemo?: boolean;
+  } | null>(null);
+  const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
+  const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
 
   // Fetch ALL saved game accounts for the user (not filtered by product)
   const { data: gameAccountsData, refetch: refetchGameAccounts, loading: loadingGameAccounts } = useMyGameAccountsQuery({
@@ -60,14 +71,17 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       return [];
     }
 
-    // Only return accounts that match THIS specific product
-    const matchingAccounts = allAccounts.filter(acc => acc.topupProduct?.id === productId);
+    // Only return accounts that match THIS specific product AND are active
+    const matchingAccounts = allAccounts.filter(acc =>
+      acc.topupProduct?.id === productId && acc.status === 'active'
+    );
 
     if (process.env.NODE_ENV === 'development') {
       console.log('🔍 Filtering accounts:', {
         currentProductId: productId,
         totalAccounts: allAccounts.length,
         matchingAccounts: matchingAccounts.length,
+        disabledCount: allAccounts.filter(acc => acc.status === 'disabled').length,
         allAccountsProductIds: allAccounts.map(acc => acc.topupProduct?.id),
       });
     }
@@ -94,22 +108,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       });
     }
   }, [gameAccountsData, loadingGameAccounts, isConnected, productItem.topupProductId, filteredGameAccounts]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const clickedOutside = Array.from(dropdownRefs.current.values()).every(
-        ref => ref && !ref.contains(event.target as Node)
-      );
-
-      if (clickedOutside) {
-        setOpenDropdowns(new Set());
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Parse user input fields from product's user_input JSONB field - Memoized for performance
   const userInputFields = useMemo(() => {
@@ -307,84 +305,35 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     return [];
   }, [userInput]); // Memoize based on userInput changes only
 
-  // Fetch current SOL price in USD with periodic updates
+  // Fetch USDT balance when wallet changes
   useEffect(() => {
-    let retryCount = 0;
-    const MAX_RETRIES = 2;
-    const FALLBACK_PRICE = 141.89;
-
-    const fetchSolPrice = async () => {
-      // Don't show loading spinner on background refreshes
-      if (retryCount === 0 && !solPrice) {
-        setLoadingSolPrice(true);
+    const fetchUsdtBalance = async () => {
+      if (!isConnected || !address) {
+        setUsdtBalance(null);
+        return;
       }
 
+      setLoadingUsdtBalance(true);
       try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout
-
-        // Use Next.js API route to avoid CORS issues
-        const response = await fetch('/api/sol-price', {
-          signal: controller.signal,
-          headers: {
-            'Accept': 'application/json',
-          },
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const price = data?.price;
-
-        if (price && typeof price === 'number') {
-          setSolPrice(price);
-          console.log('✅ SOL price updated:', price, 'USD');
-          retryCount = 0; // Reset retry count on success
-        } else {
-          throw new Error('Invalid price data received');
-        }
-      } catch (error: any) {
-        console.warn('⚠️ Failed to fetch SOL price:', error.message);
-
-        // Retry logic
-        if (retryCount < MAX_RETRIES) {
-          retryCount++;
-          console.log(`Retrying... (${retryCount}/${MAX_RETRIES})`);
-          setTimeout(() => fetchSolPrice(), 1000 * retryCount); // Faster backoff: 1s, 2s
-        } else {
-          // Use fallback price if all retries fail and no price is set
-          if (!solPrice) {
-            console.log('Using fallback SOL price: $' + FALLBACK_PRICE);
-            setSolPrice(FALLBACK_PRICE);
-          } else {
-            console.log('Keeping previous SOL price:', solPrice);
-          }
-          retryCount = 0; // Reset for next interval
-        }
+        const balance = await getBalance('USDT');
+        setUsdtBalance(balance);
+        console.log('USDT balance:', balance);
+      } catch (error) {
+        console.error('Error fetching USDT balance:', error);
+        setUsdtBalance(null);
       } finally {
-        setLoadingSolPrice(false);
+        setLoadingUsdtBalance(false);
       }
     };
 
-    // Set fallback price immediately for instant display
-    setSolPrice(FALLBACK_PRICE);
+    fetchUsdtBalance();
 
-    // Then fetch real price
-    fetchSolPrice();
+    // Refresh balance every 10 seconds
+    const balanceInterval = setInterval(fetchUsdtBalance, 10000);
+    return () => clearInterval(balanceInterval);
+  }, [isConnected, address, getBalance]);
 
-    // Set up polling to refresh SOL price every 1 minute
-    const priceInterval = setInterval(() => {
-      console.log('🔄 Refreshing SOL price...');
-      fetchSolPrice();
-    }, 60000); // 60 seconds = 1 minute
-
-    // Cleanup interval on unmount
-    return () => clearInterval(priceInterval);
-  }, []);
+  // No need to fetch SOL price - we only use USDT (1:1 with USD)
 
   // Listen for wallet switch event to refetch user data
   useEffect(() => {
@@ -429,43 +378,17 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     return () => window.removeEventListener('wallet-switched', handleWalletSwitch);
   }, [refetchUser]);
 
-  // Convert USD to SOL - Memoized
-  const convertUsdToSol = useCallback((usdAmount: number): number => {
-    if (!solPrice) return 0;
-    return usdAmount / solPrice;
-  }, [solPrice]);
+  // Get product price in USD - USDT is 1:1 with USD
+  const productPriceUsd = useMemo(() => productItem.price || 0, [productItem.price]);
 
-  // Detect currency from product name or default to USD - Memoized
-  const productCurrency = useMemo((): string => {
-    const name = (productItem.displayName || productItem.name || '').toUpperCase();
-
-    // Malaysian Ringgit
-    if (name.includes('RM') && name.includes('MY')) return 'MYR';
-    if (name.includes('MYR')) return 'MYR';
-
-    // Singapore Dollar
-    if (name.includes('SGD') || (name.includes('SG') && name.includes('$'))) return 'SGD';
-
-    // Indonesian Rupiah
-    if (name.includes('IDR') || name.includes('INDONESIA')) return 'IDR';
-
-    // Thai Baht
-    if (name.includes('THB') || name.includes('THAILAND')) return 'THB';
-
-    // Default to USD
-    return 'USD';
-  }, [productItem.displayName, productItem.name]);
-
-  // Get product price in fiat currency - Memoized
-  const productPriceFiat = useMemo(() => productItem.price || 0, [productItem.price]);
-
-  // Convert fiat to USD if needed (for SOL conversion)
-  // For now, assume all prices are in USD equivalent
-  // TODO: Add currency conversion rates for MYR, SGD, etc.
-  const productPriceUsd = productPriceFiat;
-
-  // Calculate SOL amount for payment - Memoized
-  const productPriceSol = useMemo(() => convertUsdToSol(productPriceUsd), [convertUsdToSol, productPriceUsd]);
+  // Convert price to selected display currency
+  const convertedPrice = useMemo(() => {
+    if (selectedCurrency.code === 'USD') {
+      return productPriceUsd;
+    }
+    const converted = convertPrice(productPriceUsd, 'USD', selectedCurrency.code);
+    return converted || productPriceUsd;
+  }, [productPriceUsd, selectedCurrency.code, convertPrice]);
 
   // Check if account exists in saved accounts (no auto-save)
   const checkAccountExists = useCallback(async (data: Record<string, string>) => {
@@ -577,58 +500,101 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     }
   }, [isConnected, filteredGameAccounts]);
 
-  // Manual save game account function
-  const handleSaveGameAccount = useCallback(async () => {
+  // Optional manual verification (for users who want to verify and save IGN)
+  const [isVerifying, setIsVerifying] = useState(false);
+
+  const handleVerifyAccount = useCallback(async () => {
     const accountId = userData["User ID"] || userData["Player ID"] || userData["UID"] || userData["Account ID"];
     const serverId = userData["insert server value"] || userData["Server"] || userData["Region"];
-    const inGameName = userData["Character Name"] || userData["In-Game Name"];
 
     if (!accountId) {
-      alert('Please enter an account ID first');
       return;
     }
 
-    setValidationStatus('validating');
-    setValidationMessage('Saving account...');
-
-    // Debug logging
-    if (process.env.NODE_ENV === 'development') {
-      console.log('💾 Saving game account with:', {
-        topupProductId: productItem.topupProductId,
-        productItem,
-        accountId,
-        serverId,
-        inGameName,
-        userData
-      });
+    if (!productItem.topupProductId) {
+      return;
     }
 
-    try {
-      const result = await createGameAccount({
-        variables: {
-          topupProductId: productItem.topupProductId ? parseInt(productItem.topupProductId.toString()) : undefined,
-          accountId: accountId,
-          serverId: serverId || undefined,
-          inGameName: inGameName || undefined,
-          userData: userData,
-        },
-      });
+    setIsVerifying(true);
 
-      if (result.data?.createGameAccount?.gameAccount) {
-        setValidationStatus('valid');
-        setValidationMessage('✓ Account saved successfully');
-        setSelectedGameAccountId(result.data.createGameAccount.gameAccount.id);
-        // Refetch to show the newly created account
-        refetchGameAccounts();
-      } else if (result.data?.createGameAccount?.errors) {
-        setValidationStatus('invalid');
-        setValidationMessage(result.data.createGameAccount.errors.join(', '));
+    // Run verification in background (fire-and-forget)
+    (async () => {
+      try {
+        // Create account for verification
+        console.log('🔍 Creating account for verification (background)...');
+        const createResult = await createGameAccount({
+          variables: {
+            topupProductId: parseInt(productItem.topupProductId.toString()),
+            accountId: accountId,
+            serverId: serverId || undefined,
+            inGameName: undefined,
+            userData: userData,
+          },
+        });
+
+        if (createResult.data?.createGameAccount?.gameAccount) {
+          const tempAccount = createResult.data.createGameAccount.gameAccount;
+          setTempAccountIdForVerify(tempAccount.id);
+
+          // Validate with vendor to get IGN
+          console.log('🔍 Validating with game vendor (background)...');
+          const validateResult = await validateGameAccount({
+            variables: {
+              gameAccountId: parseInt(tempAccount.id),
+            },
+          });
+
+          if (validateResult.data?.validateGameAccountMutation?.gameAccount) {
+            const ign = validateResult.data.validateGameAccountMutation.gameAccount.inGameName;
+            setVerifiedIGN(ign || null);
+            console.log('✅ IGN verified (background):', ign);
+
+            // Refresh saved accounts list
+            refetchGameAccounts();
+          } else {
+            console.log('⚠️ Could not retrieve IGN (background)');
+          }
+        }
+      } catch (err: any) {
+        console.error('❌ Verification error (background):', err);
+      } finally {
+        setIsVerifying(false);
       }
-    } catch (err: any) {
-      setValidationStatus('invalid');
-      setValidationMessage(err.message || 'Failed to save account');
+    })();
+  }, [userData, productItem.topupProductId, createGameAccount, validateGameAccount, refetchGameAccounts]);
+
+  // Promise-based confirmation modal
+  const showConfirmation = useCallback((data: {
+    ign: string | null;
+    gameId: string;
+    amount: number;
+    productName: string;
+    isDemo?: boolean;
+  }): Promise<boolean> => {
+    return new Promise((resolve) => {
+      confirmResolveRef.current = resolve;
+      setConfirmModalData(data);
+      setShowConfirmModal(true);
+    });
+  }, []);
+
+  // Handle modal confirmation
+  const handleConfirm = useCallback(() => {
+    if (confirmResolveRef.current) {
+      confirmResolveRef.current(true);
+      confirmResolveRef.current = null;
     }
-  }, [userData, productItem.topupProduct?.id, createGameAccount, refetchGameAccounts]);
+    setShowConfirmModal(false);
+  }, []);
+
+  // Handle modal cancel
+  const handleCancel = useCallback(() => {
+    if (confirmResolveRef.current) {
+      confirmResolveRef.current(false);
+      confirmResolveRef.current = null;
+    }
+    setShowConfirmModal(false);
+  }, []);
 
   // Optimize handleInputChange with useCallback and add validation check
   const handleInputChange = useCallback((fieldName: string, value: string) => {
@@ -655,6 +621,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setValidationStatus('idle');
       setValidationMessage('');
 
+      // Clear verified IGN when user changes Player ID or Server
+      const isAccountIdField = fieldName === "User ID" || fieldName === "Player ID" || fieldName === "UID" || fieldName === "Account ID";
+      const isServerField = fieldName === "insert server value" || fieldName === "Server" || fieldName === "Region";
+
+      if (isAccountIdField || isServerField) {
+        setVerifiedIGN(null);
+        setTempAccountIdForVerify(null);
+        console.log('🔄 Cleared verification state - user is changing account details');
+      }
+
       // Check if account exists after 1 second of inactivity
       if (value.trim()) {
         validationTimeoutRef.current = setTimeout(() => {
@@ -675,8 +651,18 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     if (account?.userData) {
       setUserData(account.userData as Record<string, string>);
       setSelectedGameAccountId(accountId);
-      // Clear manual entry mode for all fields when loading a saved account
-      setManualEntryFields(new Set());
+      setTempAccountIdForVerify(null); // Clear temp account
+
+      // For saved accounts, set verified IGN
+      if (account.inGameName) {
+        setVerifiedIGN(account.inGameName);
+        console.log('✅ Loaded saved account with IGN:', account.inGameName);
+      } else {
+        // Clear IGN if account doesn't have one
+        setVerifiedIGN(null);
+        console.log('⚠️ Loaded saved account without IGN');
+      }
+
       // Set validation status for loaded account
       if (account.approve) {
         setValidationStatus('valid');
@@ -719,6 +705,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           setSelectedGameAccountId(null);
           setValidationStatus('idle');
           setValidationMessage('');
+          setVerifiedIGN(null);
+          setTempAccountIdForVerify(null);
         }
         // Refetch to update the list
         refetchGameAccounts();
@@ -769,32 +757,11 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         return;
       }
 
-      // STEP 3: Fetch latest SOL price RIGHT before payment for maximum accuracy
-      console.log('Fetching latest SOL price before payment...');
-      let currentSolPrice = solPrice;
-      try {
-        // Use Next.js API route to avoid CORS issues
-        const response = await fetch('/api/sol-price');
-        const data = await response.json();
-        const latestPrice = data?.price;
+      // STEP 2.5: Proceed directly to payment (no mandatory verification)
 
-        if (latestPrice) {
-          currentSolPrice = latestPrice;
-          setSolPrice(latestPrice); // Update state with fresh price
-          console.log('Using latest SOL price for payment:', latestPrice, 'USD');
-        } else {
-          console.warn('Could not fetch latest price, using cached price:', currentSolPrice);
-        }
-      } catch (error) {
-        console.warn('Error fetching latest SOL price, using cached price:', error);
-      }
-
-      // STEP 4: Check if SOL price is available
-      if (!currentSolPrice) {
-        setFormErrors(['Please wait, loading current SOL price...']);
-        setProcessingPayment(false);
-        return;
-      }
+      // STEP 3: Calculate USDT payment amount (1:1 with USD)
+      const paymentAmount = productPriceUsd;
+      console.log('USDT payment amount:', paymentAmount, 'USDT');
 
       // STEP 5: Check if merchant wallet is configured
       const merchantAddress = process.env.NEXT_PUBLIC_MERCHANT_WALLET;
@@ -809,10 +776,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         return;
       }
 
-      // STEP 6: Calculate SOL amount using LATEST price
-      const solAmount = productPriceUsd / currentSolPrice;
-
-      if (solAmount <= 0) {
+      // STEP 6: Validate payment amount
+      if (paymentAmount <= 0) {
         setFormErrors(['Invalid price calculation. Please try again.']);
         setProcessingPayment(false);
         return;
@@ -821,14 +786,13 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       console.log('Payment details:', {
         merchantAddress,
         priceUsd: productPriceUsd,
-        currency: productCurrency,
-        solPrice: currentSolPrice,
-        solAmount: solAmount.toFixed(9),
+        token: 'USDT',
+        tokenAmount: paymentAmount.toFixed(2),
         from: address
       });
 
-      // STEP 7: Send transaction and wait for confirmation
-      const signature = await sendTransaction(merchantAddress, solAmount);
+      // STEP 7: Send USDT transaction and wait for confirmation
+      const signature = await sendTransaction(merchantAddress, paymentAmount, 'USDT');
 
       if (!signature) {
         console.error('Transaction failed: No signature returned');
@@ -871,11 +835,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         // Create order with transaction signature
         console.log("Creating order with transaction signature:", signature);
         console.log("User data being sent:", userData);
+        console.log("Payment token: USDT");
+        console.log("Payment amount:", paymentAmount);
+        // TODO: Backend needs to accept cryptoCurrency and cryptoAmount parameters
         const result = await createOrder({
           variables: {
             topupProductItemId: productItem.id,
             transactionSignature: signature,
             userData: Object.keys(userData).length > 0 ? userData : undefined,
+            // cryptoCurrency: 'USDT', // TODO: Add to backend schema
+            // cryptoAmount: paymentAmount, // TODO: Add to backend schema
           },
         });
 
@@ -932,9 +901,13 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 });
               }
 
-              const gameAccountResult = await createGameAccount({
-                variables: {
-                  topupProductId: productItem.topupProductId ? parseInt(productItem.topupProductId.toString()) : undefined,
+              // Only auto-save if topupProductId exists
+              if (!productItem.topupProductId) {
+                console.warn('⚠️ Cannot auto-save: topupProductId is missing');
+              } else {
+                const gameAccountResult = await createGameAccount({
+                  variables: {
+                    topupProductId: parseInt(productItem.topupProductId.toString()),
                   accountId: accountId,
                   serverId: serverId || undefined,
                   inGameName: inGameName || undefined,
@@ -949,6 +922,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               } else if (gameAccountResult.data?.createGameAccount?.errors) {
                 console.warn('⚠️ Failed to auto-save game account:', gameAccountResult.data.createGameAccount.errors);
               }
+            }
             } catch (gameAccountError) {
               console.error('Error auto-saving game account:', gameAccountError);
               // Don't fail the order if saving account fails
@@ -979,7 +953,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setFormErrors(errors);
       setProcessingPayment(false);
     }
-  }, [isConnected, address, connect, userInputFields, userData, productPriceUsd, solPrice, sendTransaction, authenticateWallet, createOrder, currentUserData]);
+  }, [isConnected, address, connect, userInputFields, userData, productPriceUsd, sendTransaction, authenticateWallet, createOrder, currentUserData, productItem, createGameAccount, validateGameAccount, refetchGameAccounts, showConfirmation]);
 
   // Optimize simulateWalletPayment with useCallback
   const simulateWalletPayment = useCallback(async () => {
@@ -1019,6 +993,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         return;
       }
 
+      // Proceed directly to demo payment (no mandatory verification)
+
       // Demo mode for testing without real blockchain
       const mockSignature = `sim_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       console.log('Simulated transaction:', mockSignature);
@@ -1051,11 +1027,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       }
 
       // Create order with simulated signature
+      console.log("Simulated payment token: USDT");
+      console.log("Simulated payment amount:", productPriceUsd);
+      // TODO: Backend needs to accept cryptoCurrency and cryptoAmount parameters
       const result = await createOrder({
         variables: {
           topupProductItemId: productItem.id,
           transactionSignature: mockSignature,
           userData: Object.keys(userData).length > 0 ? userData : undefined,
+          // cryptoCurrency: 'USDT', // TODO: Add to backend schema
+          // cryptoAmount: productPriceUsd, // TODO: Add to backend schema
         },
       });
 
@@ -1078,7 +1059,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setFormErrors([err.message || "Failed to create simulated order"]);
       setProcessingPayment(false);
     }
-  }, [isConnected, address, userInputFields, userData, authenticateWallet, createOrder, productItem.id, currentUserData]);
+  }, [isConnected, address, userInputFields, userData, productPriceUsd, authenticateWallet, createOrder, productItem, currentUserData, createGameAccount, validateGameAccount, refetchGameAccounts, showConfirmation]);
 
   if (orderResult) {
     return (
@@ -1210,28 +1191,54 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             <p className="text-sm opacity-60">Item ID: {productItem.id}</p>
           </div>
           <div className="text-right">
-            {/* Always show fiat currency prominently */}
+            {/* Show price in selected currency */}
             <p className="text-2xl font-bold">
-              {productCurrency === 'USD' ? '$' : productCurrency === 'MYR' ? 'RM ' : ''}
-              {productPriceUsd.toFixed(2)}
-              {productCurrency !== 'USD' && productCurrency !== 'MYR' ? ` ${productCurrency}` : ''}
+              {formatPrice(convertedPrice, selectedCurrency)}
             </p>
-            {solPrice && productPriceSol > 0 && (
+            {selectedCurrency.code !== 'USD' && (
               <p className="text-sm opacity-70 mt-1">
-                ≈ {productPriceSol.toFixed(6)} SOL
+                ≈ ${productPriceUsd.toFixed(2)} USD
               </p>
             )}
-            {loadingSolPrice && (
-              <p className="text-xs opacity-50 mt-1">Loading SOL price...</p>
-            )}
-            {!loadingSolPrice && solPrice && (
-              <p className="text-xs opacity-50 mt-1">
-                1 SOL = ${solPrice.toFixed(2)} USD
-              </p>
-            )}
+            <p className="text-xs opacity-60 mt-1">
+              Payment: {productPriceUsd.toFixed(2)} USDT
+            </p>
           </div>
         </div>
       </div>
+
+      {/* USDT Balance Display */}
+      {isConnected && (
+        <div className="mb-6 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"/>
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd"/>
+              </svg>
+              <div>
+                <p className="text-sm font-semibold text-green-300">USDT Balance</p>
+                <p className="text-xs text-white/60">Stablecoin (Solana)</p>
+              </div>
+            </div>
+            <div className="text-right">
+              {loadingUsdtBalance ? (
+                <p className="text-lg font-bold text-green-400">Loading...</p>
+              ) : (
+                <p className="text-lg font-bold text-green-400">
+                  {usdtBalance !== null ? usdtBalance.toFixed(2) : '0.00'} USDT
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="mt-3 pt-3 border-t border-green-500/20">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-white/60">Payment Amount:</span>
+              <span className="font-bold text-white">{productPriceUsd.toFixed(2)} USDT</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Error Display */}
       {formErrors.length > 0 && (
@@ -1250,7 +1257,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         {/* Saved Game Accounts Selector */}
         {isConnected && filteredGameAccounts.length > 0 && (
           <div className="space-y-3 rounded-lg bg-green-500/10 border border-green-500/30 p-4">
-            <h4 className="text-sm font-semibold text-green-300">💾 Your Saved Accounts</h4>
+            <h4 className="text-sm font-semibold text-green-300"> Recent Used Accounts</h4>
             <div className="space-y-2">
               {filteredGameAccounts.map((account) => (
                 <div
@@ -1261,37 +1268,56 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                       : 'bg-white/5 hover:bg-white/10'
                   }`}
                 >
-                  <button
-                    type="button"
-                    onClick={() => handleLoadGameAccount(account.id)}
-                    className="flex-1 text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="font-medium text-white">
                         {account.displayName || account.inGameName || 'Saved Account'}
                       </span>
-                      {account.approve && <span className="text-xs text-green-400">✓ Verified</span>}
-                    </div>
-                    <div className="text-xs opacity-70 space-y-0.5 mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-blue-300">ID:</span>
-                        <span className="font-mono">{account.accountId}</span>
-                      </div>
-                      {account.serverId && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-purple-300">Server:</span>
-                          <span>{account.serverId}</span>
-                        </div>
+                      {account.approve && account.inGameName !== account.accountId && (
+                        <span className="text-xs text-green-400">✓ Verified</span>
                       )}
                     </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteGameAccount(account.id)}
-                    className="ml-3 rounded-lg bg-red-500/20 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/30 transition"
-                  >
-                    Delete
-                  </button>
+                    <div className="text-xs space-y-1">
+                      {/* Display all fields from userData dynamically */}
+                      {account.userData && typeof account.userData === 'object' && Object.entries(account.userData).map(([key, value]) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <span className="text-blue-300 font-semibold">{key}:</span>
+                          <span className="font-mono text-white">{String(value)}</span>
+                        </div>
+                      ))}
+                      {/* Fallback if no userData */}
+                      {(!account.userData || Object.keys(account.userData).length === 0) && (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="text-blue-300 font-semibold">Game ID:</span>
+                            <span className="font-mono text-white">{account.accountId}</span>
+                          </div>
+                          {account.serverId && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-purple-300 font-semibold">Server:</span>
+                              <span className="text-white">{account.serverId}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleLoadGameAccount(account.id)}
+                      className="rounded-lg bg-blue-500/20 px-4 py-1.5 text-sm text-blue-300 hover:bg-blue-500/30 transition"
+                    >
+                      Select
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteGameAccount(account.id)}
+                      className="rounded-lg bg-red-500/20 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/30 transition"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1329,67 +1355,19 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               const fieldPlaceholder = field.placeholder || `Enter ${fieldLabel}`;
               const fieldTag = field.tag || 'input';
 
-              // Check if this is a Player ID / User ID / Account ID field that should show saved accounts
+              // Check if this is a Player ID / User ID / Account ID field for clear button
               const accountIdPatterns = ['Player ID', 'User ID', 'UID', 'Account ID', 'player_id', 'user_id', 'uid', 'account_id'];
               const isAccountIdField = accountIdPatterns.some(pattern =>
                 fieldName.toLowerCase().includes(pattern.toLowerCase()) ||
                 fieldLabel.toLowerCase().includes(pattern.toLowerCase())
               );
 
-              // Get saved account IDs for dropdown if applicable
-              const hasSavedAccounts = isAccountIdField && filteredGameAccounts.length > 0;
-              const savedAccountOptions = hasSavedAccounts
-                ? filteredGameAccounts.map(acc => ({
-                    value: acc.accountId,
-                    text: acc.displayName || acc.accountId,
-                    fullData: acc
-                  }))
-                : [];
-
-              // Check if this field is in manual entry mode
-              const isManualEntry = manualEntryFields.has(fieldName);
-
-              // Determine what will be rendered
-              let renderType = 'input';
-              if (hasSavedAccounts && !isManualEntry) {
-                renderType = 'saved-accounts-dropdown';
-              } else if (fieldTag === 'dropdown' && field.options && Array.isArray(field.options) && !isManualEntry) {
-                renderType = 'regular-dropdown';
-              }
-
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`🔍 Rendering field ${index}:`, {
-                  fieldTag,
-                  fieldName,
-                  fieldLabel,
-                  isAccountIdField,
-                  hasSavedAccounts,
-                  isManualEntry,
-                  filteredGameAccounts: filteredGameAccounts.length,
-                  savedAccountOptions: savedAccountOptions.length,
-                  renderType: renderType,
-                  reason: hasSavedAccounts ? 'Has saved accounts' : isManualEntry ? 'Manual entry mode' : 'No saved accounts'
-                });
-
-                // Extra debugging for account ID fields
-                if (fieldName.toLowerCase().includes('id') || fieldLabel.toLowerCase().includes('id')) {
-                  console.log(`🎯 ID field detected:`, {
-                    fieldName,
-                    fieldLabel,
-                    matchedPattern: accountIdPatterns.find(pattern =>
-                      fieldName.toLowerCase().includes(pattern.toLowerCase()) ||
-                      fieldLabel.toLowerCase().includes(pattern.toLowerCase())
-                    ),
-                    willShowDropdown: hasSavedAccounts || (fieldTag === 'dropdown' && field.options),
-                    accounts: filteredGameAccounts.map(acc => ({
-                      id: acc.id,
-                      accountId: acc.accountId,
-                      displayName: acc.displayName,
-                      productId: acc.topupProduct?.id
-                    }))
-                  });
-                }
-              }
+              // Check if this is a Server ID field for clear button
+              const serverIdPatterns = ['Server', 'server', 'Server ID', 'server_id', 'insert server value', 'Region', 'region'];
+              const isServerIdField = serverIdPatterns.some(pattern =>
+                fieldName.toLowerCase().includes(pattern.toLowerCase()) ||
+                fieldLabel.toLowerCase().includes(pattern.toLowerCase())
+              );
 
               return (
                 <div key={`input-${index}-${fieldName}`}>
@@ -1398,134 +1376,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     {field.required && <span className="text-red-400"> *</span>}
                   </label>
 
-                  {/* Render custom dropdown for saved accounts OR regular select for other dropdowns */}
-                  {hasSavedAccounts && !isManualEntry ? (
-                    /* Custom button dropdown for saved accounts */
-                    <div
-                      className="relative"
-                      ref={(el) => {
-                        if (el) dropdownRefs.current.set(fieldName, el);
-                      }}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOpenDropdowns(prev => {
-                            const newSet = new Set(prev);
-                            if (newSet.has(fieldName)) {
-                              newSet.delete(fieldName);
-                            } else {
-                              newSet.clear(); // Close other dropdowns
-                              newSet.add(fieldName);
-                            }
-                            return newSet;
-                          });
-                        }}
-                        className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-white/5 rounded-xl shadow hover:bg-white/10 transition-all ring-1 ring-white/20 hover:ring-white/30"
-                      >
-                        <div className="text-left flex-1">
-                          {userData[fieldName] ? (
-                            <>
-                              {(() => {
-                                const selectedAccount = filteredGameAccounts.find(acc => acc.accountId === userData[fieldName]);
-                                if (selectedAccount) {
-                                  return (
-                                    <div>
-                                      <div className="text-white font-medium text-sm">
-                                        {selectedAccount.displayName || selectedAccount.inGameName || 'Saved Account'}
-                                      </div>
-                                      <div className="flex items-center gap-3 text-xs text-white/60 mt-0.5">
-                                        <span className="font-mono">{selectedAccount.accountId}</span>
-                                        {selectedAccount.serverId && (
-                                          <span>• {selectedAccount.serverId}</span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  );
-                                }
-                                return <span className="text-white">{userData[fieldName]}</span>;
-                              })()}
-                            </>
-                          ) : (
-                            <span className="text-white/70">Recent Game Accounts</span>
-                          )}
-                        </div>
-                        <IoChevronDown
-                          className={`transition-transform text-white/70 flex-shrink-0 ${
-                            openDropdowns.has(fieldName) ? "rotate-180" : ""
-                          }`}
-                          size={20}
-                        />
-                      </button>
-
-                      {openDropdowns.has(fieldName) && (
-                        <div className="absolute mt-2 w-full bg-gray-900 rounded-xl shadow-lg border border-white/20 p-2 z-10 max-h-64 overflow-y-auto">
-                          {savedAccountOptions.length === 0 ? (
-                            <div className="px-3 py-2 text-sm text-white/50">No saved accounts</div>
-                          ) : (
-                            <>
-                              {savedAccountOptions.map((option: any, optIndex: number) => (
-                                <button
-                                  key={`saved-${fieldName}-${optIndex}`}
-                                  type="button"
-                                  onClick={() => {
-                                    const account = filteredGameAccounts.find(acc => acc.accountId === option.value);
-                                    if (account?.userData) {
-                                      // Load all saved account data into the form
-                                      setUserData(account.userData as Record<string, string>);
-                                      setSelectedGameAccountId(account.id);
-                                      console.log('✅ Loaded saved game account from dropdown:', account.id);
-                                    } else {
-                                      // Just set the account ID field
-                                      handleInputChange(fieldName, option.value);
-                                    }
-                                    // Close dropdown
-                                    setOpenDropdowns(new Set());
-                                  }}
-                                  className={`w-full text-left px-3 py-2.5 rounded-lg transition ${
-                                    userData[fieldName] === option.value
-                                      ? 'bg-blue-500/20 text-white'
-                                      : 'hover:bg-white/10 text-white/90'
-                                  }`}
-                                >
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="text-sm font-medium">
-                                      {option.fullData.displayName || option.fullData.inGameName || 'Saved Account'}
-                                    </span>
-                                    {option.fullData.approve && <span className="text-xs text-green-400">✓</span>}
-                                  </div>
-                                  <div className="space-y-0.5">
-                                    <div className="flex items-center gap-2 text-xs">
-                                      <span className="text-blue-300">ID:</span>
-                                      <span className="font-mono text-white/70">{option.fullData.accountId}</span>
-                                    </div>
-                                    {option.fullData.serverId && (
-                                      <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-purple-300">Server:</span>
-                                        <span className="text-white/70">{option.fullData.serverId}</span>
-                                      </div>
-                                    )}
-                                  </div>
-                                </button>
-                              ))}
-                              <div className="border-t border-white/10 my-1"></div>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setManualEntryFields(prev => new Set(prev).add(fieldName));
-                                  handleInputChange(fieldName, '');
-                                  setOpenDropdowns(new Set());
-                                }}
-                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-white/10 transition text-blue-400 text-sm"
-                              >
-                                Enter manually...
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ) : (fieldTag === 'dropdown' && field.options && Array.isArray(field.options)) && !isManualEntry ? (
+                  {/* Render regular select for dropdown fields OR simple input for all others */}
+                  {(fieldTag === 'dropdown' && field.options && Array.isArray(field.options)) ? (
                     /* Regular select dropdown for non-account fields */
                     <select
                       value={userData[fieldName] || ""}
@@ -1555,7 +1407,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                           placeholder={fieldPlaceholder}
                           value={userData[fieldName] || ""}
                           onChange={(e) => handleInputChange(fieldName, e.target.value)}
-                          className={`w-full rounded-xl bg-white/5 px-4 py-3 pr-10 text-white placeholder-white/40 outline-none ring-1 transition focus:ring-2 ${
+                          className={`w-full rounded-xl bg-white/5 px-4 py-3 ${(isAccountIdField || isServerIdField) && userData[fieldName] ? 'pr-12' : 'pr-4'} text-white placeholder-white/40 outline-none ring-1 transition focus:ring-2 ${
                             validationStatus === 'validating' ? 'ring-blue-400/50' :
                             validationStatus === 'valid' ? 'ring-green-400/50' :
                             validationStatus === 'invalid' ? 'ring-red-400/50' :
@@ -1563,52 +1415,25 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                           }`}
                           required={field.required}
                         />
-                        {/* Inline validation indicator */}
-                        {isAccountIdField && validationStatus !== 'idle' && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                            {validationStatus === 'validating' && (
-                              <svg className="animate-spin h-5 w-5 text-blue-400" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
-                              </svg>
-                            )}
-                            {validationStatus === 'valid' && (
-                              <span className="text-green-400 text-xl">✓</span>
-                            )}
-                            {validationStatus === 'invalid' && (
-                              <span className="text-red-400 text-xl">✗</span>
-                            )}
-                          </div>
+                        {/* Clear button for Player ID and Server ID fields */}
+                        {(isAccountIdField || isServerIdField) && userData[fieldName] && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleInputChange(fieldName, '');
+                              setSelectedGameAccountId(null);
+                              setValidationStatus('idle');
+                              setValidationMessage('');
+                            }}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-6 h-6 rounded-full bg-white/10 hover:bg-white/20 text-white/60 hover:text-white transition"
+                            title="Clear"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                          </button>
                         )}
                       </div>
-
-                      {/* Validation error message */}
-                      {isAccountIdField && validationStatus === 'invalid' && validationMessage && (
-                        <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                          <span>⚠️</span>
-                          <span>{validationMessage}</span>
-                        </p>
-                      )}
-
-                      {/* Show button to switch back to saved accounts if available */}
-                      {hasSavedAccounts && isManualEntry && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setManualEntryFields(prev => {
-                              const newSet = new Set(prev);
-                              newSet.delete(fieldName);
-                              return newSet;
-                            });
-                            // Clear the manual value
-                            handleInputChange(fieldName, '');
-                          }}
-                          className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition"
-                        >
-                          <IoChevronDown className="rotate-90" size={16} />
-                          Use saved accounts instead
-                        </button>
-                      )}
                     </div>
                   )}
 
@@ -1619,48 +1444,64 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               );
             })}
 
-            {/* Save Account Button */}
-            {(() => {
-              const showButton = isConnected && Object.keys(userData).length > 0 && validationStatus !== 'valid';
+            {/* Account Summary - Show only IGN or Game ID */}
+            {isConnected && Object.keys(userData).length > 0 && (
+              <div className={`rounded-xl border p-4 ${verifiedIGN ? 'bg-green-500/10 border-green-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
+                {verifiedIGN ? (
+                  /* Show only IGN if verified */
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-sm text-white/60">In-Game Name:</span>
+                    </div>
+                    <span className="text-lg font-bold text-green-400">{verifiedIGN}</span>
+                  </div>
+                ) : (
+                  /* Show only Game ID if no IGN */
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      <span className="text-sm text-white/60">Game ID:</span>
+                    </div>
+                    <span className="text-lg font-bold text-blue-400">
+                      {userData["User ID"] || userData["Player ID"] || userData["UID"] || userData["Account ID"] || 'N/A'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
-              if (process.env.NODE_ENV === 'development') {
-                console.log('💾 Save Button Visibility:', {
-                  isConnected,
-                  hasUserData: Object.keys(userData).length > 0,
-                  userDataKeys: Object.keys(userData),
-                  validationStatus,
-                  validationMessage,
-                  selectedGameAccountId,
-                  showButton,
-                });
-              }
-
-              return showButton ? (
-                <button
-                  type="button"
-                  onClick={handleSaveGameAccount}
-                  disabled={validationStatus === 'validating'}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500/20 hover:bg-blue-500/30 rounded-xl border border-blue-500/50 text-blue-300 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                {validationStatus === 'validating' ? (
+            {/* Optional: Verify Account & Save IGN Button */}
+            {isConnected && Object.keys(userData).length > 0 && !verifiedIGN && (
+              <button
+                type="button"
+                onClick={handleVerifyAccount}
+                disabled={isVerifying}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/20 hover:bg-purple-500/30 rounded-xl border border-purple-500/50 text-purple-300 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isVerifying ? (
                   <>
                     <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                     </svg>
-                    Saving Account...
+                    Verifying...
                   </>
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
-                    Save Account for Future Use
+                    Verify & Save Account (Optional)
                   </>
                 )}
               </button>
-              ) : null;
-            })()}
+            )}
+
           </div>
         ) : (
           <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4">
@@ -1732,29 +1573,25 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 Wallet connected: <span className="font-mono">{address?.slice(0, 4)}...{address?.slice(-4)}</span>
               </p>
               {/* Payment Amount Display */}
-              {solPrice && productPriceSol > 0 && (
-                <div className="mb-3 rounded-lg bg-white/5 p-3">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm opacity-70">Price:</span>
-                    <span className="font-semibold">
-                      {productCurrency === 'USD' ? '$' : productCurrency === 'MYR' ? 'RM ' : ''}
-                      {productPriceUsd.toFixed(2)}
-                      {productCurrency !== 'USD' && productCurrency !== 'MYR' ? ` ${productCurrency}` : ''}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm opacity-70">You will pay:</span>
-                    <span className="font-mono font-bold text-green-400">
-                      {productPriceSol.toFixed(6)} SOL
-                    </span>
-                  </div>
+              <div className="mb-3 rounded-lg bg-white/5 p-3">
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm opacity-70">Price:</span>
+                  <span className="font-semibold">
+                    ${productPriceUsd.toFixed(2)} USD
+                  </span>
                 </div>
-              )}
+                <div className="flex justify-between items-center">
+                  <span className="text-sm opacity-70">You will pay:</span>
+                  <span className="font-mono font-bold text-green-400">
+                    {productPriceUsd.toFixed(2)} USDT
+                  </span>
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={handleWalletPayment}
-                disabled={processingPayment || loadingSolPrice || !solPrice}
-                className="w-full rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-4 py-3 font-semibold text-white transition hover:from-green-600 hover:to-blue-600 disabled:opacity-50"
+                disabled={processingPayment}
+                className="w-full rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 font-semibold text-white transition hover:from-green-600 hover:to-emerald-600 disabled:opacity-50"
               >
                 {processingPayment ? (
                   <span className="flex items-center justify-center gap-2">
@@ -1764,10 +1601,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     </svg>
                     Processing Payment...
                   </span>
-                ) : loadingSolPrice ? (
-                  "Loading price..."
                 ) : (
-                  `💰 Pay ${productPriceSol.toFixed(6)} SOL`
+                  `💰 Pay ${productPriceUsd.toFixed(2)} USDT`
                 )}
               </button>
 
@@ -1807,6 +1642,102 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           mandatory={true} // Force email verification before purchase
         />
       )}
+
+      {/* Account Confirmation Modal */}
+      {showConfirmModal && confirmModalData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleCancel();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg bg-gradient-to-br from-gray-900 to-gray-800 p-6 shadow-2xl border border-white/10">
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-white">
+                {confirmModalData.isDemo ? "Confirm Simulation" : "Confirm Payment"}
+              </h3>
+              <button
+                onClick={handleCancel}
+                className="text-gray-400 transition hover:text-white"
+                aria-label="Close"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Account Details */}
+            <div className={`mb-4 rounded-lg border p-4 ${confirmModalData.ign ? 'bg-green-500/10 border-green-500/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
+              {confirmModalData.ign ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-5 h-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-green-300">Account Verified</span>
+                  </div>
+                  <div className="mb-2">
+                    <p className="text-xs text-white/50">In-Game Name</p>
+                    <p className="text-xl font-bold text-green-400">{confirmModalData.ign}</p>
+                  </div>
+                  <div className="pt-2 border-t border-green-500/20">
+                    <p className="text-xs text-white/50">Game ID</p>
+                    <p className="text-sm text-white/80">{confirmModalData.gameId}</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-orange-300">Could Not Retrieve IGN</span>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/50">Game ID</p>
+                    <p className="text-lg font-bold text-orange-400">{confirmModalData.gameId}</p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Payment Details */}
+            <div className="mb-6 space-y-3 rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+              <div>
+                <p className="text-xs text-white/50">Product</p>
+                <p className="text-sm font-medium text-white">{confirmModalData.productName}</p>
+              </div>
+              {!confirmModalData.isDemo && (
+                <div>
+                  <p className="text-xs text-white/50">Amount</p>
+                  <p className="text-lg font-bold text-blue-400">{confirmModalData.amount.toFixed(6)} SOL</p>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancel}
+                className="flex-1 rounded-lg bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 border border-white/20"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirm}
+                className="flex-1 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-4 py-3 font-semibold text-white transition hover:from-green-600 hover:to-blue-600"
+              >
+                {confirmModalData.isDemo ? "Proceed with Simulation" : "Confirm Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

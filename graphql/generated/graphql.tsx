@@ -79,6 +79,7 @@ export type GameAccount = {
   gameId?: Maybe<Scalars['Int']['output']>;
   id: Scalars['ID']['output'];
   inGameName?: Maybe<Scalars['String']['output']>;
+  lastPurchaseAt?: Maybe<Scalars['ISO8601DateTime']['output']>;
   serverId?: Maybe<Scalars['String']['output']>;
   status: Scalars['String']['output'];
   topupProduct?: Maybe<TopupProduct>;
@@ -145,6 +146,9 @@ export type MutationCreateGameAccountArgs = {
 
 
 export type MutationCreateOrderArgs = {
+  cryptoAmount?: InputMaybe<Scalars['Float']['input']>;
+  cryptoCurrency?: InputMaybe<Scalars['String']['input']>;
+  gameAccountId?: InputMaybe<Scalars['ID']['input']>;
   topupProductItemId: Scalars['ID']['input'];
   transactionSignature: Scalars['String']['input'];
   userData?: InputMaybe<Scalars['JSON']['input']>;
@@ -256,6 +260,7 @@ export type Query = {
 
 export type QueryMyGameAccountsArgs = {
   approvedOnly?: InputMaybe<Scalars['Boolean']['input']>;
+  recentPurchasesOnly?: InputMaybe<Scalars['Boolean']['input']>;
   topupProductId?: InputMaybe<Scalars['Int']['input']>;
 };
 
@@ -391,7 +396,7 @@ export type VerifyEmailPayload = {
   user?: Maybe<User>;
 };
 
-export type GameAccountFieldsFragment = { __typename?: 'GameAccount', id: string, accountId?: string | null, serverId?: string | null, inGameName?: string | null, approve: boolean, displayName: string, userData?: any | null, createdAt: any, updatedAt: any, topupProduct?: { __typename?: 'TopupProduct', id: string, title: string, slug?: string | null } | null };
+export type GameAccountFieldsFragment = { __typename?: 'GameAccount', id: string, accountId?: string | null, serverId?: string | null, inGameName?: string | null, approve: boolean, displayName: string, status: string, userData?: any | null, createdAt: any, updatedAt: any, topupProduct?: { __typename?: 'TopupProduct', id: string, title: string, slug?: string | null } | null };
 
 export type OrderFragment = { __typename?: 'Order', id: string, orderNumber: string, amount: number, currency: string, cryptoAmount?: number | null, cryptoCurrency?: string | null, status: string, orderType: string, metadata?: any | null, createdAt: any, updatedAt: any, cryptoTransaction?: { __typename?: 'CryptoTransaction', id: string, amount?: number | null, token: string, network: string, transactionSignature: string, transactionType: string, confirmations?: number | null, state: string, direction: string, createdAt: any } | null };
 
@@ -480,7 +485,7 @@ export type MyGameAccountsQueryVariables = Exact<{
 }>;
 
 
-export type MyGameAccountsQuery = { __typename?: 'Query', myGameAccounts: Array<{ __typename?: 'GameAccount', id: string, accountId?: string | null, serverId?: string | null, inGameName?: string | null, approve: boolean, displayName: string, userData?: any | null, createdAt: any, updatedAt: any, topupProduct?: { __typename?: 'TopupProduct', id: string, title: string, slug?: string | null } | null }> };
+export type MyGameAccountsQuery = { __typename?: 'Query', myGameAccounts: Array<{ __typename?: 'GameAccount', id: string, accountId?: string | null, serverId?: string | null, inGameName?: string | null, approve: boolean, displayName: string, status: string, userData?: any | null, createdAt: any, updatedAt: any, topupProduct?: { __typename?: 'TopupProduct', id: string, title: string, slug?: string | null } | null }> };
 
 export type MyOrdersQueryVariables = Exact<{
   limit?: InputMaybe<Scalars['Int']['input']>;
@@ -533,6 +538,7 @@ export const GameAccountFieldsFragmentDoc = gql`
   inGameName
   approve
   displayName
+  status
   userData
   topupProduct {
     id
@@ -1082,6 +1088,7 @@ export const MyGameAccountsDocument = gql`
     inGameName
     approve
     displayName
+    status
     userData
     topupProduct {
       id
