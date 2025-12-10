@@ -30,9 +30,13 @@ const TopupProductItem = (props: {
   } = props.item;
 
   const priceValue = price || 0;
-  
-  // Use the currency field from the item data, default to MYR if not specified
-  const originalCurrency = currency || 'MYR';
+
+  // PRIORITY 1: Use the currency field from the database if available
+  // PRIORITY 2: Fallback to USD if not specified
+  // This ensures we always use the correct currency from the backend
+  const originalCurrency = (currency && typeof currency === 'string')
+    ? currency.toUpperCase()
+    : 'USD';
   
   // Convert price from original currency to selected currency
   const convertedPrice = selectedCurrency.code === originalCurrency 

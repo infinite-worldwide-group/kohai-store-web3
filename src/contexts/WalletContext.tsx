@@ -38,6 +38,10 @@ interface WalletContextType {
   // Reown modal
   openModal: () => void;
   closeModal: () => void;
+
+  // Authentication errors
+  authError: string | null;
+  clearAuthError: () => void;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -51,6 +55,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [authenticateWallet] = useAuthenticateWalletMutation();
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Track previous address to detect wallet switches
   const previousAddressRef = useRef<string | undefined>(undefined);
@@ -59,6 +64,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Track the actual extension address (may differ from AppKit)
   const [extensionAddress, setExtensionAddress] = useState<string | undefined>(undefined);
 
+  // Track connection timeout
+  const connectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isConnectingRef = useRef(false);
+
+  // Clear auth error function
+  const clearAuthError = () => setAuthError(null);
+
   // FORCE clear stale wallet data on mount and sync to extension
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -66,7 +78,10 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     // Check if we have a serious mismatch on initial load
     const phantom = (window as any).phantom?.solana;
     const solflare = (window as any).solflare;
-    const actualAddress = phantom?.publicKey?.toString() || solflare?.publicKey?.toString();
+    const bitget = (window as any).bitkeep?.solana || (window as any).bitgetWallet?.solana;
+    const actualAddress = phantom?.publicKey?.toString() ||
+                         solflare?.publicKey?.toString() ||
+                         bitget?.publicKey?.toString();
 
     if (actualAddress && appKitAddress && actualAddress !== appKitAddress) {
       console.warn('⚠️ MOUNT: Stale wallet address detected on initial load');
@@ -109,46 +124,60 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   // Local state to immediately reflect disconnect
   const isConnected = !isDisconnecting && appKitIsConnected;
 
-  // RPC endpoint - use environment variable or default to devnet for testing
-  const rpcEndpoint = process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.devnet.solana.com';
-  const connection = new Connection(rpcEndpoint);
+  // RPC endpoint - use environment variable or default to mainnet
+  const rpcEndpoint = process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.mainnet-beta.solana.com';
+  const connection = new Connection(rpcEndpoint, {
+    commitment: 'finalized',
+    confirmTransactionInitialTimeout: 60000,
+  });
 
-  // Use extension address if available and different from AppKit, otherwise use AppKit address
+  // ALWAYS prioritize extension address over AppKit cache to prevent mismatches
+  // Get real-time address from wallet extension (Phantom, Solflare, Bitget, etc.)
+  const getExtensionAddress = () => {
+    if (typeof window === 'undefined') return null;
+
+    // Check for various wallet extensions
+    const phantom = (window as any).phantom?.solana;
+    const solflare = (window as any).solflare;
+    const bitget = (window as any).bitkeep?.solana || (window as any).bitgetWallet?.solana;
+
+    // Return the first connected wallet's address
+    return phantom?.publicKey?.toString() ||
+           solflare?.publicKey?.toString() ||
+           bitget?.publicKey?.toString();
+  };
+
+  // Use extension address if available, otherwise fall back to AppKit
+  const actualExtensionAddress = getExtensionAddress();
   const address = !isDisconnecting
-    ? (extensionAddress || appKitAddress)
+    ? (actualExtensionAddress || extensionAddress || appKitAddress)
     : undefined;
 
-  // DEBUG: Log address changes and verify wallet extension
+  // DEBUG: Log address being used
   useEffect(() => {
     if (typeof window === 'undefined' || !isConnected) return;
 
-    // Check actual wallet extension
-    const phantom = (window as any).phantom?.solana;
-    const solflare = (window as any).solflare;
-
-    const extensionActualAddress = phantom?.publicKey?.toString() || solflare?.publicKey?.toString();
-
-    console.log('🔍 WALLET DEBUG:', {
+    console.log('✅ WALLET CONNECTED:', {
       displayedAddress: address,
-      appKitAddress: appKitAddress,
-      extensionAddress: extensionAddress,
-      extensionActualAddress: extensionActualAddress,
-      isExtensionOverride: !!extensionAddress,
-      source: extensionAddress ? 'Extension Override' : 'AppKit',
-      MISMATCH: extensionActualAddress && address && extensionActualAddress !== address ? '⚠️ YES - ADDRESS MISMATCH!' : 'No',
-      rpcEndpoint: rpcEndpoint,
-      network: rpcEndpoint.includes('devnet') ? 'DEVNET' : rpcEndpoint.includes('testnet') ? 'TESTNET' : 'MAINNET'
+      source: actualExtensionAddress ? '🔌 Phantom Extension (Real-time)' :
+              extensionAddress ? '💾 Extension (Cached)' :
+              '📦 AppKit (Fallback)',
+      appKitCached: appKitAddress,
+      phantomRealtime: actualExtensionAddress,
+      network: rpcEndpoint.includes('devnet') ? 'DEVNET' : rpcEndpoint.includes('testnet') ? 'TESTNET' : 'MAINNET',
+      rpcEndpoint: rpcEndpoint
     });
 
-    // Alert and FIX if there's a mismatch
-    if (extensionActualAddress && address && extensionActualAddress !== address) {
-      console.warn('⚠️ Wallet address mismatch detected (AppKit cache out of sync)');
-      console.warn('Extension has:', extensionActualAddress);
-      console.warn('App was using:', address);
-      console.log('🔧 Auto-fixing: Syncing to extension address...');
+    // Since we now use actualExtensionAddress in real-time, mismatches shouldn't happen
+    // But keep this as a safeguard
+    if (actualExtensionAddress && appKitAddress && actualExtensionAddress !== appKitAddress) {
+      console.warn('⚠️ AppKit cache differs from Phantom extension');
+      console.warn('Phantom extension:', actualExtensionAddress);
+      console.warn('AppKit cached:', appKitAddress);
+      console.log('✅ Using Phantom address (real-time sync active)');
 
-      // FORCE sync to extension address immediately
-      setExtensionAddress(extensionActualAddress);
+      // Update cached extension address
+      setExtensionAddress(actualExtensionAddress);
 
       // Clear old JWT token
       if (typeof window !== 'undefined') {
@@ -163,18 +192,116 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         window.dispatchEvent(new CustomEvent('clear-apollo-cache'));
       }
 
-      console.log('✅ Address synced to:', extensionActualAddress);
+      console.log('✅ Address synced to:', actualExtensionAddress);
       console.log('♻️ Re-authenticating with correct address...');
     }
-  }, [address, appKitAddress, extensionAddress, rpcEndpoint, isConnected]);
+  }, [address, appKitAddress, actualExtensionAddress, extensionAddress, rpcEndpoint, isConnected]);
 
-  const connect = () => {
+  const connect = async () => {
+    // Prevent multiple simultaneous connection attempts
+    if (isConnectingRef.current) {
+      console.log('⚠️ Connection already in progress, ignoring duplicate request');
+      return;
+    }
+
+    // Clear any previous timeout
+    if (connectionTimeoutRef.current) {
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+
+    // Clear any stale WalletConnect data that might cause publish errors
+    try {
+      if (typeof window !== 'undefined') {
+        const keysToCheck = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && (key.startsWith('wc@2:') || key.includes('walletconnect'))) {
+            keysToCheck.push(key);
+          }
+        }
+
+        // If there are stale WalletConnect keys, clear them
+        if (keysToCheck.length > 0) {
+          console.log('🧹 Clearing stale WalletConnect data before connecting...');
+          keysToCheck.forEach(key => window.localStorage.removeItem(key));
+        }
+      }
+    } catch (e) {
+      console.warn('Could not clear stale data:', e);
+    }
+
+    console.log('🔌 Starting wallet connection...');
+    isConnectingRef.current = true;
     setIsConnecting(true);
-    open();
+    setAuthError(null);
+
+    // Set shorter timeout to reset connecting state if modal is closed without connecting
+    // Users can click "Connect Wallet" again immediately
+    connectionTimeoutRef.current = setTimeout(() => {
+      if (isConnectingRef.current && !appKitIsConnected) {
+        console.log('⏱️ Connection cancelled or timed out - ready to retry');
+        isConnectingRef.current = false;
+        setIsConnecting(false);
+      }
+    }, 3000); // 3 second timeout - much shorter for better UX
+
+    try {
+      await open();
+    } catch (error: any) {
+      console.error('Error opening wallet modal:', error);
+
+      // Handle specific WalletConnect errors
+      let errorMessage = 'Failed to open wallet connection';
+      if (error?.message?.includes('Failed to publish payload')) {
+        errorMessage = 'Connection error. Please disconnect any existing sessions and try again.';
+
+        // Clear all WalletConnect data
+        if (typeof window !== 'undefined') {
+          console.log('🧹 Clearing all WalletConnect data due to publish error...');
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (key && (
+              key.startsWith('wc@2:') ||
+              key.startsWith('@w3m/') ||
+              key.startsWith('W3M_') ||
+              key.includes('walletconnect') ||
+              key.includes('reown')
+            )) {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach(key => window.localStorage.removeItem(key));
+          console.log('✅ Cleared WalletConnect data. Please try connecting again.');
+        }
+      }
+
+      setAuthError(errorMessage);
+      isConnectingRef.current = false;
+      setIsConnecting(false);
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+    }
   };
 
   const disconnect = async () => {
     try {
+      // Clear any authentication errors
+      setAuthError(null);
+
+      // Clear connection timeout if exists
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+
+      // Reset connecting state
+      isConnectingRef.current = false;
+      setIsConnecting(false);
+
       // Immediately set disconnecting state to update UI
       setIsDisconnecting(true);
 
@@ -192,11 +319,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Close modal
       close();
 
-      // Clear ALL AppKit/WalletConnect related storage after disconnect
+      // AGGRESSIVE CACHE CLEARING - Remove ALL AppKit/WalletConnect data
       if (typeof window !== 'undefined') {
         // Small delay to ensure disconnect completes
         await new Promise(resolve => setTimeout(resolve, 100));
 
+        console.log('🧹 Clearing all wallet connection cache...');
+
+        // Clear localStorage
         const keysToRemove: string[] = [];
         for (let i = 0; i < window.localStorage.length; i++) {
           const key = window.localStorage.key(i);
@@ -206,16 +336,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             key.startsWith('W3M_') ||
             key.startsWith('WALLETCONNECT_') ||
             key.includes('walletconnect') ||
-            key.includes('reown')
+            key.includes('reown') ||
+            key.includes('wagmi') ||
+            key.includes('connector') ||
+            key.includes('appkit') ||
+            key.includes('solana')
           )) {
             keysToRemove.push(key);
           }
         }
+        keysToRemove.forEach(key => {
+          console.log('  Removing localStorage:', key);
+          window.localStorage.removeItem(key);
+        });
 
-        // Remove all identified keys
-        keysToRemove.forEach(key => window.localStorage.removeItem(key));
-
-        // Also clear sessionStorage
+        // Clear sessionStorage
         const sessionKeysToRemove: string[] = [];
         for (let i = 0; i < window.sessionStorage.length; i++) {
           const key = window.sessionStorage.key(i);
@@ -224,14 +359,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             key.startsWith('@w3m/') ||
             key.startsWith('W3M_') ||
             key.includes('walletconnect') ||
-            key.includes('reown')
+            key.includes('reown') ||
+            key.includes('appkit') ||
+            key.includes('solana')
           )) {
             sessionKeysToRemove.push(key);
           }
         }
-        sessionKeysToRemove.forEach(key => window.sessionStorage.removeItem(key));
+        sessionKeysToRemove.forEach(key => {
+          console.log('  Removing sessionStorage:', key);
+          window.sessionStorage.removeItem(key);
+        });
 
-        console.log('Wallet disconnected and storage cleared');
+        console.log('✅ Wallet disconnected and all cache cleared');
       }
 
       // Reset disconnecting state
@@ -313,76 +453,48 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       transaction.feePayer = fromPubkey;
 
       console.log('Sending transaction...');
-      console.log('Transaction details:', {
-        from: fromPubkey.toString(),
-        to: toPubkey.toString(),
-        amount: lamportsToSend,
-        blockhash,
-      });
 
-      // Debug: Check what methods are available on walletProvider
-      console.log('Available wallet provider methods:', Object.keys(walletProvider));
-      console.log('signTransaction available?', typeof walletProvider.signTransaction);
-      console.log('sendTransaction available?', typeof walletProvider.sendTransaction);
-      console.log('signAndSendTransaction available?', typeof (walletProvider as any).signAndSendTransaction);
+      // Suppress ALL console errors during wallet provider calls to prevent empty {} errors
+      const originalError = console.error;
+      const suppressWalletErrors = (...args: any[]) => {
+        // Suppress all errors during wallet operations
+        // Wallet providers often throw empty {} objects that clutter the console
+        return;
+      };
 
       let signature: string;
 
-      // Try approach 1: Use sendTransaction (standard Solana wallet adapter method)
-      if (typeof walletProvider.sendTransaction === 'function') {
-        try {
-          console.log('Attempting sendTransaction (standard wallet adapter method)...');
-          signature = await walletProvider.sendTransaction(transaction, connection, {
-            skipPreflight: false,
-            preflightCommitment: 'confirmed',
-          });
-          console.log('Transaction sent via sendTransaction successfully');
-        } catch (sendError: any) {
-          console.error('Error with sendTransaction approach:', sendError);
-          console.error('Send error details:', {
-            message: sendError.message,
-            code: sendError.code,
-            name: sendError.name,
-          });
+      try {
+        console.error = suppressWalletErrors;
 
-          // Fallback: Try signTransaction + sendRawTransaction
+        // Try approach 1: Use sendTransaction (standard Solana wallet adapter method)
+        if (typeof walletProvider.sendTransaction === 'function') {
           try {
-            console.log('Trying fallback: signTransaction + sendRawTransaction');
+            signature = await walletProvider.sendTransaction(transaction, connection, {
+              skipPreflight: false,
+              preflightCommitment: 'confirmed',
+            });
+          } catch (sendError: any) {
+            // Fallback: Try signTransaction + sendRawTransaction
             const signedTransaction = await walletProvider.signTransaction(transaction);
-            console.log('Transaction signed successfully');
-
             const rawTransaction = signedTransaction.serialize();
-            console.log('Transaction serialized, sending...');
-
             signature = await connection.sendRawTransaction(rawTransaction, {
               skipPreflight: false,
               preflightCommitment: 'confirmed',
             });
-            console.log('Raw transaction sent successfully');
-          } catch (signError: any) {
-            console.error('Error with signTransaction fallback:', signError);
-            throw new Error(`All transaction methods failed. Last error: ${signError.message || 'Unknown error'}`);
           }
-        }
-      } else {
-        // No sendTransaction method, try sign + send approach
-        try {
-          console.log('Attempting to sign transaction...');
+        } else {
+          // No sendTransaction method, try sign + send approach
           const signedTransaction = await walletProvider.signTransaction(transaction);
-          console.log('Transaction signed successfully');
-
           const rawTransaction = signedTransaction.serialize();
-          console.log('Transaction serialized, sending...');
-
           signature = await connection.sendRawTransaction(rawTransaction, {
             skipPreflight: false,
             preflightCommitment: 'confirmed',
           });
-          console.log('Raw transaction sent successfully');
-        } catch (signError: any) {
-          console.error('Error with signTransaction approach:', signError);
-          throw new Error(`Failed to send transaction: ${signError.message || 'Unknown error'}`);
         }
+      } finally {
+        // Restore original console.error
+        console.error = originalError;
       }
 
       console.log('Transaction sent:', signature);
@@ -398,14 +510,30 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       console.log('Transaction confirmed!');
       return signature;
     } catch (error: any) {
-      console.error('Error sending transaction:', error);
-      console.error('Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      // Check for user cancellation/rejection (most common case)
+      const errorStr = String(error?.message || error || '').toLowerCase();
+      const isCancellation =
+        errorStr.includes('user rejected') ||
+        errorStr.includes('user denied') ||
+        errorStr.includes('user cancelled') ||
+        errorStr.includes('user canceled') ||
+        errorStr.includes('cancelled by user') ||
+        errorStr.includes('canceled by user') ||
+        errorStr.includes('rejected by user') ||
+        errorStr.includes('transaction declined') ||
+        errorStr.includes('signature rejected') ||
+        // Empty error object is often a user cancellation in Phantom/Solflare
+        (Object.keys(error || {}).length === 0);
+
+      if (isCancellation) {
+        const cancelError = new Error('USER_CANCELLED_TRANSACTION');
+        (cancelError as any).code = 'USER_CANCELLED';
+        throw cancelError;
+      }
 
       // Provide more helpful error messages
       if (error.message?.includes('Insufficient balance')) {
         throw error; // Re-throw our custom balance error
-      } else if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
-        throw new Error('Transaction rejected by user');
       } else if (error.message?.includes('simulate') || error.message?.includes('simulation')) {
         throw new Error(
           'Transaction simulation failed. This usually means: ' +
@@ -420,9 +548,19 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         throw new Error('Wallet not connected. Please connect your wallet and try again.');
       }
 
-      // Include the actual error message in the thrown error
-      const errorMsg = error.message || error.toString() || 'Unknown error occurred';
-      throw new Error(`Transaction failed: ${errorMsg}. Check console for more details.`);
+      // Handle empty error objects or other errors
+      let errorMsg = 'Transaction failed. Please try again.';
+      if (error.message) {
+        errorMsg = error.message;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMsg = error.toString();
+      } else if (typeof error === 'string') {
+        errorMsg = error;
+      }
+
+      const userError = new Error(errorMsg);
+      (userError as any).isUserFacing = true;
+      throw userError;
     }
   };
 
@@ -470,10 +608,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       });
 
       // Check if sender has token account
-      let senderAccountExists = false;
       try {
         await getAccount(connection, fromTokenAccount);
-        senderAccountExists = true;
       } catch (error: any) {
         if (error instanceof TokenAccountNotFoundError) {
           throw new Error(`You don't have a ${tokenSymbol} token account. Please fund your wallet with ${tokenSymbol} first.`);
@@ -492,10 +628,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const transaction = new Transaction();
 
       // Check if recipient has token account, if not create it
-      let recipientAccountExists = false;
       try {
         await getAccount(connection, toTokenAccount);
-        recipientAccountExists = true;
       } catch (error: any) {
         if (error instanceof TokenAccountNotFoundError) {
           console.log('Recipient token account does not exist, will create it');
@@ -532,17 +666,60 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       let signature: string;
 
-      // Try sendTransaction method first
-      if (typeof walletProvider.sendTransaction === 'function') {
-        try {
-          signature = await walletProvider.sendTransaction(transaction, connection, {
-            skipPreflight: false,
-            preflightCommitment: 'confirmed',
-          });
-          console.log('SPL token transaction sent successfully');
-        } catch (sendError: any) {
-          console.error('Error with sendTransaction:', sendError);
-          // Fallback to sign + send
+      // Suppress ALL console errors during wallet provider calls to prevent empty {} errors
+      const originalError = console.error;
+      const suppressWalletErrors = (...args: any[]) => {
+        // Suppress all errors during wallet operations
+        // Wallet providers often throw empty {} objects that clutter the console
+        return;
+      };
+
+      try {
+        console.error = suppressWalletErrors;
+
+        // Try sendTransaction method first
+        if (typeof walletProvider.sendTransaction === 'function') {
+          try {
+            signature = await walletProvider.sendTransaction(transaction, connection, {
+              skipPreflight: false,
+              preflightCommitment: 'confirmed',
+            });
+            console.log('SPL token transaction sent successfully');
+          } catch (sendError: any) {
+            // Fallback to sign + send
+            try {
+              const signedTransaction = await walletProvider.signTransaction(transaction);
+              const rawTransaction = signedTransaction.serialize();
+              signature = await connection.sendRawTransaction(rawTransaction, {
+                skipPreflight: false,
+                preflightCommitment: 'confirmed',
+              });
+            } catch (fallbackError: any) {
+              // Check if user cancelled during signing
+              const errorStr = String(fallbackError?.message || fallbackError || '').toLowerCase();
+              const isCancellation =
+                errorStr.includes('user rejected') ||
+                errorStr.includes('user denied') ||
+                errorStr.includes('user cancelled') ||
+                errorStr.includes('user canceled') ||
+                errorStr.includes('cancelled by user') ||
+                errorStr.includes('canceled by user') ||
+                errorStr.includes('rejected by user') ||
+                errorStr.includes('transaction declined') ||
+                errorStr.includes('signature rejected') ||
+                (Object.keys(fallbackError || {}).length === 0);
+
+              if (isCancellation) {
+                const cancelError = new Error('USER_CANCELLED_TRANSACTION');
+                (cancelError as any).code = 'USER_CANCELLED';
+                throw cancelError;
+              }
+              // Re-throw other errors to be handled by outer catch
+              throw fallbackError;
+            }
+          }
+        } else {
+          // Sign and send
           const signedTransaction = await walletProvider.signTransaction(transaction);
           const rawTransaction = signedTransaction.serialize();
           signature = await connection.sendRawTransaction(rawTransaction, {
@@ -550,14 +727,9 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             preflightCommitment: 'confirmed',
           });
         }
-      } else {
-        // Sign and send
-        const signedTransaction = await walletProvider.signTransaction(transaction);
-        const rawTransaction = signedTransaction.serialize();
-        signature = await connection.sendRawTransaction(rawTransaction, {
-          skipPreflight: false,
-          preflightCommitment: 'confirmed',
-        });
+      } finally {
+        // Restore original console.error
+        console.error = originalError;
       }
 
       console.log('SPL token transaction sent:', signature);
@@ -573,19 +745,47 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       console.log('SPL token transaction confirmed!');
       return signature;
     } catch (error: any) {
-      console.error('Error sending SPL token transaction:', error);
+      // Check for user cancellation/rejection (most common case)
+      const errorStr = String(error?.message || error || '').toLowerCase();
+      const isCancellation =
+        errorStr.includes('user rejected') ||
+        errorStr.includes('user denied') ||
+        errorStr.includes('user cancelled') ||
+        errorStr.includes('user canceled') ||
+        errorStr.includes('cancelled by user') ||
+        errorStr.includes('canceled by user') ||
+        errorStr.includes('rejected by user') ||
+        errorStr.includes('transaction declined') ||
+        errorStr.includes('signature rejected') ||
+        // Empty error object is often a user cancellation in Phantom/Solflare
+        (Object.keys(error || {}).length === 0);
+
+      if (isCancellation) {
+        const cancelError = new Error('USER_CANCELLED_TRANSACTION');
+        (cancelError as any).code = 'USER_CANCELLED';
+        throw cancelError;
+      }
 
       // Provide helpful error messages
-      if (error.message?.includes('User rejected') || error.message?.includes('User denied')) {
-        throw new Error('Transaction rejected by user');
-      } else if (error.message?.includes('Insufficient')) {
+      if (error.message?.includes('Insufficient')) {
         throw error; // Re-throw our custom balance error
       } else if (error.message?.includes('token account')) {
         throw error; // Re-throw token account errors
       }
 
-      const errorMsg = error.message || error.toString() || 'Unknown error occurred';
-      throw new Error(`SPL Token transfer failed: ${errorMsg}`);
+      // Handle empty error objects
+      let errorMsg = 'Payment failed. Please check your balance and try again.';
+      if (error.message) {
+        errorMsg = error.message;
+      } else if (error.toString && error.toString() !== '[object Object]') {
+        errorMsg = error.toString();
+      } else if (typeof error === 'string') {
+        errorMsg = error;
+      }
+
+      const userError = new Error(errorMsg);
+      (userError as any).isUserFacing = true;
+      throw userError;
     }
   };
 
@@ -611,7 +811,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   };
 
   const getTokenBalance = async (tokenSymbol: string): Promise<number | null> => {
-    if (!address) return null;
+    console.log(`💰 getTokenBalance called for ${tokenSymbol}, address:`, address);
+
+    if (!address) {
+      console.warn('⚠️ No address available for token balance check');
+      return null;
+    }
 
     try {
       const tokenConfig = getTokenConfig(tokenSymbol);
@@ -623,6 +828,12 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const network = getNetworkFromRPC(rpcEndpoint);
       const mintAddress = getTokenMintAddress(tokenSymbol, network);
       const pubkey = new PublicKey(address);
+
+      console.log(`🔍 Checking ${tokenSymbol} balance:`, {
+        address: address,
+        network: network,
+        mintAddress: mintAddress.toString()
+      });
 
       // Get associated token account address
       const tokenAccount = await getAssociatedTokenAddress(
@@ -990,10 +1201,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     previousAddressRef.current = currentAddress;
   }, [appKitAddress]);
 
-  // Update connecting state when modal is closed
+  // Update connecting state when connection succeeds or modal is closed
   useEffect(() => {
     if (appKitIsConnected) {
+      console.log('✅ Wallet connected successfully');
+      isConnectingRef.current = false;
       setIsConnecting(false);
+
+      // Clear connection timeout
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
     }
   }, [appKitIsConnected]);
 
@@ -1001,6 +1220,38 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!appKitIsConnected && isDisconnecting) {
       setIsDisconnecting(false);
+    }
+  }, [appKitIsConnected, isDisconnecting]);
+
+  // Cleanup connection timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+        connectionTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Detect when user closes modal without connecting (connection declined)
+  useEffect(() => {
+    // If we were connecting but are no longer, and the wallet didn't connect
+    if (isConnectingRef.current && !appKitIsConnected && !isDisconnecting) {
+      const checkTimer = setTimeout(() => {
+        if (isConnectingRef.current && !appKitIsConnected) {
+          console.log('⚠️ Connection likely declined or modal closed');
+          isConnectingRef.current = false;
+          setIsConnecting(false);
+
+          // Clear timeout
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
+        }
+      }, 1000); // Check after 1 second delay
+
+      return () => clearTimeout(checkTimer);
     }
   }, [appKitIsConnected, isDisconnecting]);
 
@@ -1041,11 +1292,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
             console.log('✅ Wallet authenticated successfully, JWT token stored');
             console.log('Current wallet address:', effectiveAddress);
           }
+
+          // Clear any previous auth errors on successful authentication
+          setAuthError(null);
         } else if (result.data?.authenticateWallet?.errors && result.data.authenticateWallet.errors.length > 0) {
-          console.error('❌ Authentication failed:', result.data.authenticateWallet.errors);
+          const errorMessage = result.data.authenticateWallet.errors.join(', ');
+          console.error('❌ Authentication failed:', errorMessage);
+          setAuthError(errorMessage);
         }
       } catch (error) {
         console.error('❌ Error authenticating wallet:', error);
+        setAuthError(error instanceof Error ? error.message : 'Unknown authentication error');
       }
     };
 
@@ -1065,6 +1322,8 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     sendTokenTransaction,
     openModal,
     closeModal,
+    authError,
+    clearAuthError,
   };
 
   return <WalletContext.Provider value={value}>{children}</WalletContext.Provider>;

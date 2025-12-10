@@ -12,6 +12,8 @@ interface CurrencyContextType {
   formatPrice: (amount: number, currency: Currency) => string;
   rates: Record<string, number> | null;
   loading: boolean;
+  lastUpdated: Date | null;
+  refreshRates: (force?: boolean) => Promise<void>;
 }
 
 const CurrencyContext = createContext<CurrencyContextType | undefined>(undefined);
@@ -22,7 +24,7 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     SUPPORTED_CURRENCIES.find(c => c.code === 'USD') || SUPPORTED_CURRENCIES[0]
   );
 
-  const { convertPrice, rates, loading } = useCurrencyConversion('USD');
+  const { convertPrice, rates, loading, lastUpdated, refreshRates } = useCurrencyConversion('USD');
   const { formatPrice } = useCurrencyFormatter();
 
   // Persist currency selection in localStorage
@@ -46,14 +48,16 @@ export const CurrencyProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [selectedCurrency]);
 
   return (
-    <CurrencyContext.Provider 
-      value={{ 
-        selectedCurrency, 
-        setSelectedCurrency, 
-        convertPrice, 
-        formatPrice, 
-        rates, 
-        loading 
+    <CurrencyContext.Provider
+      value={{
+        selectedCurrency,
+        setSelectedCurrency,
+        convertPrice,
+        formatPrice,
+        rates,
+        loading,
+        lastUpdated,
+        refreshRates
       }}
     >
       {children}
@@ -72,8 +76,9 @@ export const useCurrency = () => {
 
 // Compact currency selector for header
 const HeaderCurrencySelector = () => {
-  const { selectedCurrency, setSelectedCurrency, loading } = useCurrency();
+  const { selectedCurrency, setSelectedCurrency, loading, lastUpdated, refreshRates } = useCurrency();
   const [isOpen, setIsOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -93,6 +98,28 @@ const HeaderCurrencySelector = () => {
   const handleCurrencySelect = (currency: Currency) => {
     setSelectedCurrency(currency);
     setIsOpen(false);
+  };
+
+  const handleRefreshRates = async () => {
+    setRefreshing(true);
+    try {
+      await refreshRates(true); // Force refresh
+      console.log('✅ Exchange rates manually refreshed');
+    } catch (error) {
+      console.error('Failed to refresh rates:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const getTimeAgo = (date: Date | null) => {
+    if (!date) return 'Never';
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h ago`;
   };
 
   // Group currencies by type
@@ -214,11 +241,36 @@ const HeaderCurrencySelector = () => {
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="p-3 border-t border-white/10 bg-white/5">
-              <p className="text-xs text-white/50 text-center">
-                Display currency only. Payments processed in USDT.
-              </p>
+            {/* Footer - Exchange Rate Status */}
+            <div className="border-t border-white/10 bg-white/5">
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-white/70">Exchange Rates</span>
+                    {loading || refreshing ? (
+                      <svg className="animate-spin h-3 w-3 text-blue-400" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                    ) : (
+                      <span className="text-xs text-green-400">● Live</span>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleRefreshRates}
+                    disabled={refreshing || loading}
+                    className="text-xs text-blue-400 hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Refresh
+                  </button>
+                </div>
+                <p className="text-xs text-white/50">
+                  Updated {getTimeAgo(lastUpdated)} • Payments in USDT
+                </p>
+              </div>
             </div>
           </div>
         </div>

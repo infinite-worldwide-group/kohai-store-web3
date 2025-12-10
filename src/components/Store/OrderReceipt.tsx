@@ -162,10 +162,34 @@ const OrderReceipt = (props: { id: string; slug?: string }) => {
               </p>
             </div>
 
-            <div className="flex justify-between border-b border-white/10 pb-2">
-              <p className="font-bold">Amount</p>
-              <p className="text-xl font-bold">{order.amount} {order.currency}</p>
-            </div>
+            {/* Show crypto amount if available, otherwise show fiat amount */}
+            {(() => {
+              const cryptoAmount = order.cryptoAmount && order.cryptoAmount !== "[FILTERED]"
+                ? order.cryptoAmount
+                : order.cryptoTransaction?.amount;
+              const cryptoCurrency = order.cryptoCurrency && order.cryptoCurrency !== "[FILTERED]"
+                ? order.cryptoCurrency
+                : order.cryptoTransaction?.token;
+
+              if (cryptoAmount && cryptoCurrency) {
+                return (
+                  <div className="flex justify-between border-b border-white/10 pb-2">
+                    <p className="font-bold">Amount</p>
+                    <p className="font-mono text-xl font-bold text-green-400">
+                      {typeof cryptoAmount === 'number' ? cryptoAmount.toFixed(6) : cryptoAmount} {cryptoCurrency}
+                    </p>
+                  </div>
+                );
+              }
+
+              // Fallback to fiat amount
+              return (
+                <div className="flex justify-between border-b border-white/10 pb-2">
+                  <p className="font-bold">Amount</p>
+                  <p className="text-xl font-bold">{order.amount} {order.currency}</p>
+                </div>
+              );
+            })()}
 
             {order.cryptoTransaction && (
               <div className="rounded-lg bg-white/5 p-4 mt-4">

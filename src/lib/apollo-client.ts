@@ -7,17 +7,25 @@ import { useMemo } from "react";
 let apolloClient: ApolloClient<any> | null = null;
 
 export function getApolloClient() {
-  // Error logging link
+  // Error logging link - errors are handled by components
   const errorLink = onError(({ graphQLErrors, networkError, operation }) => {
-    if (graphQLErrors) {
-      graphQLErrors.forEach(({ message, locations, path }) =>
-        console.error(
-          `[GraphQL error]: Message: ${message}, Location: ${locations}, Path: ${path}`,
-        ),
-      );
-    }
-    if (networkError) {
-      console.error(`[Network error]: ${networkError}`, operation);
+    // Only log in development for debugging
+    if (process.env.NODE_ENV === 'development') {
+      if (graphQLErrors) {
+        graphQLErrors.forEach(({ message, locations, path }) => {
+          // Skip authentication errors if no JWT token exists (expected behavior)
+          if (message.includes('Authentication required')) {
+            const hasToken = typeof window !== 'undefined' && window.localStorage.getItem('jwtToken');
+            if (!hasToken) return; // Don't log if user isn't authenticated yet
+          }
+          console.error(
+            `[GraphQL error]: Message: ${message}, Location: ${locations}, Path: ${path}`,
+          );
+        });
+      }
+      if (networkError) {
+        console.error(`[Network error]: ${networkError}`, operation);
+      }
     }
   });
 
@@ -28,8 +36,6 @@ export function getApolloClient() {
       typeof window !== "undefined"
         ? window.localStorage.getItem("jwtToken")
         : null;
-
-    console.log("Apollo Request - JWT Token:", jwtToken ? `Bearer ${jwtToken.substring(0, 20)}...` : "No token found");
 
     return {
       headers: {
@@ -45,8 +51,6 @@ export function getApolloClient() {
     uri: process.env.NEXT_PUBLIC_GRAPHQL_URL,
     credentials: "include",
   });
-
-  console.log("Apollo Client GraphQL URL:", process.env.NEXT_PUBLIC_GRAPHQL_URL);
 
   const client = new ApolloClient({
     ssrMode: typeof window === "undefined",
@@ -74,7 +78,6 @@ export function useApollo() {
 // Helper function to clear Apollo cache
 export function clearApolloCache() {
   if (apolloClient && typeof window !== "undefined") {
-    console.log('🗑️ Clearing Apollo cache...');
     apolloClient.cache.reset();
   }
 }

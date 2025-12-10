@@ -54,11 +54,17 @@ export const modal = createAppKit({
     email: true,      // ✅ Enable email login
     socials: ['google', 'discord', 'github', 'apple'], // ✅ Enable social logins
   },
+  enableWalletConnect: true,
+  enableInjected: true,
+  enableCoinbase: true,
+  allWallets: 'SHOW',
   themeMode: 'dark',
   themeVariables: {
     '--w3m-accent': '#3b82f6', // Blue accent color
     '--w3m-border-radius-master': '8px',
-  }
+  },
+  // Disable auto-reconnect to prevent connecting to old wallet on refresh
+  enableOnramp: false,
 });
 
 // Export network configurations
@@ -69,5 +75,5 @@ export const networks = {
 };
 
 // Default network (change to mainnet for production)
-// Currently using devnet for testing - change to solana for production
-export const defaultNetwork = solanaDevnet;
+// Currently using MAINNET for production - change to solanaDevnet for testing
+export const defaultNetwork = solana;

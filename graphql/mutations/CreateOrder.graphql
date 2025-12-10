@@ -2,11 +2,15 @@ mutation CreateOrder(
   $topupProductItemId: ID!
   $transactionSignature: String!
   $userData: JSON
+  $cryptoCurrency: String
+  $cryptoAmount: Float
 ) {
   createOrder(
     topupProductItemId: $topupProductItemId
     transactionSignature: $transactionSignature
     userData: $userData
+    cryptoCurrency: $cryptoCurrency
+    cryptoAmount: $cryptoAmount
   ) {
     errors
     order {
@@ -14,7 +18,3 @@ mutation CreateOrder(
     }
   }
 }
-
-# TODO: Add these parameters when backend is ready:
-# $cryptoCurrency: String
-# $cryptoAmount: Float

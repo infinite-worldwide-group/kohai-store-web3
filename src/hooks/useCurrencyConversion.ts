@@ -31,8 +31,12 @@ export interface UseCurrencyConversionReturn {
   loading: boolean;
   error: string | null;
   lastUpdated: Date | null;
-  refreshRates: () => Promise<void>;
+  refreshRates: (force?: boolean) => Promise<void>;
 }
+
+// Cache duration: 1 hour (exchange rates don't change that often)
+const CACHE_DURATION = 60 * 60 * 1000; // 1 hour in milliseconds
+const CACHE_KEY = 'currency_exchange_rates';
 
 export const useCurrencyConversion = (baseCurrency: string = 'USD'): UseCurrencyConversionReturn => {
   const [rates, setRates] = useState<ConversionRates | null>(null);
@@ -40,29 +44,107 @@ export const useCurrencyConversion = (baseCurrency: string = 'USD'): UseCurrency
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  // Mock API call to fetch exchange rates
+  // Fetch real-time exchange rates from API
   const fetchExchangeRates = useCallback(async (base: string = 'USD'): Promise<ConversionRates> => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // In a real app, you would call an actual exchange rate API here
-    // For example: CoinGecko API, ExchangeRates API, etc.
-    
-    if (MOCK_EXCHANGE_RATES[base]) {
-      return MOCK_EXCHANGE_RATES[base];
+    const apiKey = process.env.NEXT_PUBLIC_EXCHANGE_RATE_API_KEY;
+
+    try {
+      // Option 1: ExchangeRate-API (Free tier: 1,500 requests/month)
+      // No API key needed for free tier!
+      const url = `https://api.exchangerate-api.com/v4/latest/${base}`;
+
+      console.log('🌐 Fetching real-time exchange rates for', base);
+
+      const response = await fetch(url, {
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`API responded with status ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (!data.rates) {
+        throw new Error('Invalid API response: missing rates');
+      }
+
+      console.log('✅ Exchange rates updated:', {
+        base: data.base,
+        date: data.date,
+        sampleRates: {
+          MYR: data.rates.MYR,
+          SGD: data.rates.SGD,
+          IDR: data.rates.IDR,
+        }
+      });
+
+      // Return the rates
+      return data.rates;
+
+    } catch (error) {
+      console.error('❌ Failed to fetch real-time rates, using fallback:', error);
+
+      // Fallback to mock rates if API fails
+      if (MOCK_EXCHANGE_RATES[base]) {
+        console.warn('⚠️ Using hardcoded fallback rates');
+        return MOCK_EXCHANGE_RATES[base];
+      }
+
+      throw new Error(`Exchange rates not available for base currency: ${base}`);
     }
-    
-    throw new Error(`Exchange rates not available for base currency: ${base}`);
   }, []);
 
-  const refreshRates = useCallback(async () => {
+  const refreshRates = useCallback(async (force: boolean = false) => {
     setLoading(true);
     setError(null);
-    
+
     try {
+      // Check cache first (unless force refresh)
+      if (!force && typeof window !== 'undefined') {
+        const cached = localStorage.getItem(CACHE_KEY);
+        if (cached) {
+          try {
+            const { rates: cachedRates, timestamp, baseCurrency: cachedBase } = JSON.parse(cached);
+            const age = Date.now() - timestamp;
+
+            // Use cached rates if less than 1 hour old and same base currency
+            if (age < CACHE_DURATION && cachedBase === baseCurrency) {
+              console.log('📦 Using cached exchange rates (age:', Math.round(age / 1000 / 60), 'minutes)');
+              setRates(cachedRates);
+              setLastUpdated(new Date(timestamp));
+              setLoading(false);
+              return;
+            } else {
+              console.log('🔄 Cache expired or base currency changed, fetching fresh rates');
+            }
+          } catch (e) {
+            console.warn('Failed to parse cached rates:', e);
+          }
+        }
+      }
+
+      // Fetch fresh rates from API
       const newRates = await fetchExchangeRates(baseCurrency);
       setRates(newRates);
-      setLastUpdated(new Date());
+      const now = new Date();
+      setLastUpdated(now);
+
+      // Cache the rates in localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({
+            rates: newRates,
+            timestamp: now.getTime(),
+            baseCurrency: baseCurrency,
+          }));
+          console.log('💾 Cached exchange rates for 1 hour');
+        } catch (e) {
+          console.warn('Failed to cache rates:', e);
+        }
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch exchange rates';
       setError(errorMessage);
@@ -87,6 +169,15 @@ export const useCurrencyConversion = (baseCurrency: string = 'USD'): UseCurrency
 
     if (fromCurrency === toCurrency) return amount;
 
+    console.log('💱 Converting:', {
+      amount,
+      from: fromCurrency,
+      to: toCurrency,
+      availableRates: Object.keys(rates),
+      fromRate: rates[fromCurrency],
+      toRate: rates[toCurrency]
+    });
+
     // Convert from source currency to base (USD)
     let amountInBase = amount;
     if (fromCurrency !== baseCurrency) {
@@ -96,10 +187,12 @@ export const useCurrencyConversion = (baseCurrency: string = 'USD'): UseCurrency
         return null;
       }
       amountInBase = amount / fromRate;
+      console.log(`  Step 1: ${amount} ${fromCurrency} ÷ ${fromRate} = ${amountInBase} ${baseCurrency}`);
     }
 
     // Convert from base to target currency
     if (toCurrency === baseCurrency) {
+      console.log(`  Result: ${amountInBase} ${toCurrency}`);
       return amountInBase;
     }
 
@@ -109,7 +202,9 @@ export const useCurrencyConversion = (baseCurrency: string = 'USD'): UseCurrency
       return null;
     }
 
-    return amountInBase * toRate;
+    const result = amountInBase * toRate;
+    console.log(`  Step 2: ${amountInBase} ${baseCurrency} × ${toRate} = ${result} ${toCurrency}`);
+    return result;
   }, [rates, baseCurrency]);
 
   return {

@@ -15,7 +15,7 @@ import { useState, useEffect } from "react";
  */
 
 const WalletButton = () => {
-  const { isConnected, address, connect, disconnect, getBalance, getTokenBalance, isConnecting } = useWallet();
+  const { isConnected, address, connect, disconnect, getBalance, getTokenBalance, isConnecting, authError, clearAuthError } = useWallet();
   const { data: currentUserData, refetch: refetchUserData, loading: userDataLoading } = useCurrentUserQuery({
     skip: !isConnected || !address,
     fetchPolicy: 'cache-and-network', // Use cache first for instant display, then fetch fresh
@@ -206,8 +206,18 @@ const WalletButton = () => {
   // Fetch USDT balance when connected
   useEffect(() => {
     if (isConnected && address) {
-      getTokenBalance('USDT').then(setBalance);
+      console.log('🔍 Fetching USDT balance for address:', address);
+      getTokenBalance('USDT')
+        .then((bal) => {
+          console.log('✅ USDT balance fetched:', bal);
+          setBalance(bal);
+        })
+        .catch((err) => {
+          console.error('❌ Error fetching USDT balance:', err);
+          setBalance(null);
+        });
     } else {
+      console.log('⚠️ Not connected or no address');
       setBalance(null);
       setShowDropdown(false); // Close dropdown when disconnected
     }
@@ -232,40 +242,114 @@ const WalletButton = () => {
     );
   }
 
+  // Function to clear WalletConnect cache manually
+  const clearWalletCache = () => {
+    if (typeof window !== 'undefined') {
+      console.log('🧹 Manually clearing all wallet cache...');
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && (
+          key.startsWith('wc@2:') ||
+          key.startsWith('@w3m/') ||
+          key.startsWith('W3M_') ||
+          key.includes('walletconnect') ||
+          key.includes('reown') ||
+          key.includes('wagmi')
+        )) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => window.localStorage.removeItem(key));
+
+      // Also clear session storage
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const key = window.sessionStorage.key(i);
+        if (key && (key.startsWith('wc@2:') || key.includes('walletconnect') || key.includes('reown'))) {
+          window.sessionStorage.removeItem(key);
+        }
+      }
+
+      console.log('✅ Cache cleared. Reloading page...');
+      window.location.reload();
+    }
+  };
+
   if (!isConnected) {
     return (
-      <button
-        onClick={connect}
-        disabled={isConnecting}
-        className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-purple-600 disabled:opacity-50"
-      >
-        {isConnecting ? (
-          <>
-            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
-            Connecting...
-          </>
-        ) : (
-          <>
-            <WalletIcon />
-            <span className="hidden sm:inline">Connect Wallet</span>
-          </>
+      <>
+        <button
+          onClick={connect}
+          disabled={isConnecting}
+          className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-purple-600 disabled:opacity-50"
+        >
+          {isConnecting ? (
+            <>
+              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                  fill="none"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              Connecting...
+            </>
+          ) : (
+            <>
+              <WalletIcon />
+              <span className="hidden sm:inline">Connect Wallet</span>
+            </>
+          )}
+        </button>
+
+        {/* Error banner with cache clear option */}
+        {authError && !isConnected && (
+          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[100] w-full max-w-md px-4">
+            <div className="rounded-lg bg-red-500/95 backdrop-blur-md border border-red-600 p-4 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <svg className="h-6 w-6 text-white flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                <div className="flex-1">
+                  <h3 className="font-bold text-white mb-1">Connection Error</h3>
+                  <p className="text-sm text-white/90 mb-3">{authError}</p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={clearWalletCache}
+                      className="px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white font-semibold text-xs transition"
+                    >
+                      Clear Cache & Retry
+                    </button>
+                    <button
+                      onClick={clearAuthError}
+                      className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium text-xs transition"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+                <button
+                  onClick={clearAuthError}
+                  className="text-white/70 hover:text-white transition"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
-      </button>
+      </>
     );
   }
 
@@ -294,38 +378,90 @@ const WalletButton = () => {
   });
 
   return (
-    <div className="relative" key={`wallet-${address}-${forceRender}`}>
-      <button
-        onClick={() => setShowDropdown(!showDropdown)}
-        className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur-md transition hover:bg-white/20"
-      >
-        <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-        <WalletIcon />
-        <span className="hidden sm:inline font-mono">{shortenAddress(address!)}</span>
+    <>
+      {/* Authentication Error Banner */}
+      {authError && isConnected && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[100] w-full max-w-2xl px-4">
+          <div className="rounded-lg bg-orange-500/95 backdrop-blur-md border border-orange-600 p-4 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <svg className="h-6 w-6 text-white flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <h3 className="font-bold text-white mb-1">Wallet Authentication Issue</h3>
+                <p className="text-sm text-white/90 mb-3">{authError}</p>
+                <div className="bg-white/10 rounded-lg p-3 mb-3 text-sm text-white">
+                  <p className="font-semibold mb-2">To fix this:</p>
+                  <ol className="list-decimal list-inside space-y-1 ml-2">
+                    <li>Open your Phantom wallet</li>
+                    <li>Switch to the account you want to use</li>
+                    <li>The app will automatically detect the change</li>
+                  </ol>
+                  <p className="mt-2 text-xs text-white/70">Or disconnect and try connecting a different wallet.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      disconnect();
+                      clearAuthError();
+                    }}
+                    className="px-4 py-2 rounded-lg bg-white/20 hover:bg-white/30 text-white font-semibold text-sm transition"
+                  >
+                    Disconnect Wallet
+                  </button>
+                  <button
+                    onClick={clearAuthError}
+                    className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white font-medium text-sm transition"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={clearAuthError}
+                className="text-white/70 hover:text-white transition"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
-        {/* Email Verification Badge */}
-        {isLoading ? (
-          <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-semibold border border-blue-500/30" title="Loading...">
-            <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-            Loading...
-          </span>
-        ) : hasEmail && isEmailVerified ? (
-          <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-semibold border border-green-500/30" title="Email Verified">
-            ✓ Verified
-          </span>
-        ) : hasEmail && !isEmailVerified ? (
-          <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs font-semibold border border-orange-500/30" title="Email Not Verified">
-            ⚠ Unverified
-          </span>
-        ) : (
-          <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30" title="No Email">
-            ✗ No Email
-          </span>
-        )}
-      </button>
+      <div className="relative" key={`wallet-${address}-${forceRender}`}>
+        <button
+          onClick={() => setShowDropdown(!showDropdown)}
+          className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-medium backdrop-blur-md transition hover:bg-white/20"
+        >
+          <div className="h-2 w-2 rounded-full bg-green-400 animate-pulse" />
+          <WalletIcon />
+          <span className="hidden sm:inline font-mono">{shortenAddress(address!)}</span>
+
+          {/* Email Verification Badge */}
+          {isLoading ? (
+            <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-semibold border border-blue-500/30" title="Loading...">
+              <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              Loading...
+            </span>
+          ) : hasEmail && isEmailVerified ? (
+            <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs font-semibold border border-green-500/30" title="Email Verified">
+              ✓ Verified
+            </span>
+          ) : hasEmail && !isEmailVerified ? (
+            <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-xs font-semibold border border-orange-500/30" title="Email Not Verified">
+              ⚠ Unverified
+            </span>
+          ) : (
+            <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 text-xs font-semibold border border-red-500/30" title="No Email">
+              ✗ No Email
+            </span>
+          )}
+        </button>
 
       {/* Dropdown menu */}
       {showDropdown && (
@@ -452,7 +588,8 @@ const WalletButton = () => {
           </div>
         </>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

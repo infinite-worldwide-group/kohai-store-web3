@@ -52,13 +52,23 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
   const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
 
+  // Check if user is authenticated (has JWT token)
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hasToken = !!window.localStorage.getItem('jwtToken');
+      setIsAuthenticated(hasToken);
+    }
+  }, [isConnected, address]);
+
   // Fetch ALL saved game accounts for the user (not filtered by product)
   const { data: gameAccountsData, refetch: refetchGameAccounts, loading: loadingGameAccounts } = useMyGameAccountsQuery({
     variables: {
       topupProductId: undefined, // Fetch all game accounts, not filtered by product
       approvedOnly: false,
     },
-    skip: !isConnected,
+    skip: !isConnected || !isAuthenticated, // Skip if not connected OR not authenticated
     fetchPolicy: 'cache-and-network',
   });
 
@@ -315,9 +325,10 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       setLoadingUsdtBalance(true);
       try {
+        console.log('🔍 PurchaseForm fetching USDT balance for address:', address);
         const balance = await getBalance('USDT');
         setUsdtBalance(balance);
-        console.log('USDT balance:', balance);
+        console.log('✅ PurchaseForm USDT balance:', balance, 'for address:', address);
       } catch (error) {
         console.error('Error fetching USDT balance:', error);
         setUsdtBalance(null);
@@ -355,6 +366,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         const jwtToken = window.localStorage.getItem('jwtToken');
         if (jwtToken) {
           console.log('✅ JWT token found in PurchaseForm');
+          setIsAuthenticated(true); // Update authentication state
           break;
         }
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -369,6 +381,12 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       try {
         await refetchUser();
         console.log('✅ User data refetched in PurchaseForm');
+        
+        // Also refetch game accounts after authentication
+        if (isAuthenticated) {
+          await refetchGameAccounts();
+          console.log('✅ Game accounts refetched');
+        }
       } catch (error) {
         console.error('❌ Error refetching user data in PurchaseForm:', error);
       }
@@ -378,8 +396,55 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     return () => window.removeEventListener('wallet-switched', handleWalletSwitch);
   }, [refetchUser]);
 
-  // Get product price in USD - USDT is 1:1 with USD
-  const productPriceUsd = useMemo(() => productItem.price || 0, [productItem.price]);
+  // Get product's original currency from database (e.g., MYR, USD, SGD)
+  const originalCurrency = useMemo(() => {
+    const curr = (productItem.currency && typeof productItem.currency === 'string')
+      ? productItem.currency.toUpperCase()
+      : 'USD'; // Default to USD if not specified (USDT products are typically in USD)
+    
+    console.log('🏷️ Product Currency Info:', {
+      productId: productItem.id,
+      productName: productItem.displayName,
+      price: productItem.price,
+      currency: curr,
+      currencyFromDB: productItem.currency
+    });
+    
+    return curr;
+  }, [productItem.currency, productItem.id, productItem.displayName, productItem.price]);
+
+  // Convert product price from original currency to USD for USDT payment
+  // USDT is 1:1 with USD, so we need USD amount
+  const productPriceUsd = useMemo(() => {
+    const priceValue = productItem.price || 0;
+    
+    // If already in USD, no conversion needed
+    if (originalCurrency === 'USD') {
+      console.log('💱 Price already in USD:', {
+        price: priceValue,
+        currency: originalCurrency,
+        willSendToBackend: priceValue
+      });
+      return priceValue;
+    }
+    
+    // Convert from original currency (e.g., MYR) to USD
+    const converted = convertPrice(priceValue, originalCurrency, 'USD');
+    const usdPrice = converted || priceValue;
+    
+    console.log('💱 Currency Conversion for Payment:', {
+      originalPrice: priceValue,
+      originalCurrency: originalCurrency,
+      convertedToUSD: usdPrice,
+      conversionWorked: converted !== null,
+      conversionRate: converted ? (usdPrice / priceValue).toFixed(6) : 'FAILED - Using raw price',
+      explanation: converted 
+        ? `${priceValue} ${originalCurrency} ÷ exchange_rate = ${usdPrice} USD`
+        : `CONVERSION FAILED - using raw price ${priceValue}`
+    });
+    
+    return usdPrice;
+  }, [productItem.price, originalCurrency, convertPrice]);
 
   // Convert price to selected display currency
   const convertedPrice = useMemo(() => {
@@ -760,8 +825,21 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       // STEP 2.5: Proceed directly to payment (no mandatory verification)
 
       // STEP 3: Calculate USDT payment amount (1:1 with USD)
-      const paymentAmount = productPriceUsd;
-      console.log('USDT payment amount:', paymentAmount, 'USDT');
+      // For very small amounts (< 0.01), use 6 decimal places
+      // For normal amounts, use 2 decimal places
+      const paymentAmount = productPriceUsd < 0.01 
+        ? parseFloat(productPriceUsd.toFixed(6))
+        : parseFloat(productPriceUsd.toFixed(2));
+        
+      console.log('💰 Payment Debug:', {
+        productItemPrice: productItem.price,
+        productPriceUsd: productPriceUsd,
+        paymentAmount: paymentAmount,
+        paymentAmountFormatted: paymentAmount < 0.01 
+          ? paymentAmount.toFixed(6) 
+          : paymentAmount.toFixed(2),
+        productItem: productItem
+      });
 
       // STEP 5: Check if merchant wallet is configured
       const merchantAddress = process.env.NEXT_PUBLIC_MERCHANT_WALLET;
@@ -778,35 +856,141 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       // STEP 6: Validate payment amount
       if (paymentAmount <= 0) {
-        setFormErrors(['Invalid price calculation. Please try again.']);
+        setFormErrors([
+          'Invalid price: Product price is $' + productPriceUsd,
+          'This product may not have a valid price set.',
+          'Please contact support or try a different product.'
+        ]);
         setProcessingPayment(false);
         return;
       }
+
+      // STEP 6.5: Check USDT balance before attempting payment
+      console.log('💰 Checking USDT balance before payment...');
+      console.log('Current balance:', usdtBalance, 'USDT');
+      console.log('Required amount:', paymentAmount, 'USDT');
+
+      if (usdtBalance === null) {
+        console.log('⚠️ Balance not loaded yet, fetching...');
+        // Try to fetch balance one more time
+        try {
+          const freshBalance = await getBalance('USDT');
+          setUsdtBalance(freshBalance);
+
+          if (freshBalance === null || freshBalance < paymentAmount) {
+            const network = process.env.NEXT_PUBLIC_SOLANA_RPC?.includes('devnet') ? 'devnet' : 'mainnet';
+            setFormErrors([
+              `Insufficient USDT balance`,
+              `You have: ${freshBalance?.toFixed(2) || '0.00'} USDT`,
+              `Required: ${paymentAmount.toFixed(2)} USDT`,
+              '',
+              network === 'devnet'
+                ? '💡 Get devnet USDT from a faucet or airdrop service'
+                : '💡 Purchase USDT on an exchange and transfer to your wallet'
+            ]);
+            setProcessingPayment(false);
+            return;
+          }
+        } catch (error) {
+          console.error('Failed to fetch balance:', error);
+          setFormErrors(['Could not verify USDT balance. Please try again.']);
+          setProcessingPayment(false);
+          return;
+        }
+      } else if (usdtBalance < paymentAmount) {
+        // Insufficient balance
+        const network = process.env.NEXT_PUBLIC_SOLANA_RPC?.includes('devnet') ? 'devnet' : 'mainnet';
+        setFormErrors([
+          `Insufficient USDT balance`,
+          `You have: ${usdtBalance.toFixed(2)} USDT`,
+          `Required: ${paymentAmount.toFixed(2)} USDT`,
+          `Shortfall: ${(paymentAmount - usdtBalance).toFixed(2)} USDT`,
+          '',
+          network === 'devnet'
+            ? '💡 Get devnet USDT from a faucet: https://faucet.solana.com'
+            : '💡 Purchase USDT on an exchange and transfer to your wallet',
+          '',
+          'Once you have enough USDT, click "Pay with USDT" again.'
+        ]);
+        setProcessingPayment(false);
+        return;
+      }
+
+      console.log('✅ Balance check passed');
 
       console.log('Payment details:', {
         merchantAddress,
         priceUsd: productPriceUsd,
         token: 'USDT',
         tokenAmount: paymentAmount.toFixed(2),
-        from: address
+        from: address,
+        balance: usdtBalance
       });
 
       // STEP 7: Send USDT transaction and wait for confirmation
-      const signature = await sendTransaction(merchantAddress, paymentAmount, 'USDT');
+      let signature: string;
+      try {
+        const txSignature = await sendTransaction(merchantAddress, paymentAmount, 'USDT');
 
-      if (!signature) {
-        console.error('Transaction failed: No signature returned');
-        setFormErrors(['Payment failed. Please try again.']);
+        if (!txSignature) {
+          setFormErrors([
+            'Payment transaction failed',
+            'No transaction signature was returned.',
+            'Please try again or contact support if the issue persists.'
+          ]);
+          setProcessingPayment(false);
+          return;
+        }
+
+        signature = txSignature;
+        console.log('Transaction successful:', signature);
+      } catch (txError: any) {
+        // Transaction failed - handle error in UI only (don't log to console)
+
+        // Check if user cancelled the transaction
+        if (txError?.message === 'USER_CANCELLED_TRANSACTION' || (txError as any)?.code === 'USER_CANCELLED') {
+          console.log('ℹ️ User cancelled the transaction');
+          setFormErrors([
+            '❌ Transaction Cancelled',
+            'You cancelled the transaction.',
+            '',
+            '✅ Your order has been cancelled. No payment was made.',
+            '',
+            'Click "Pay with USDT" again when you\'re ready to complete the purchase.'
+          ]);
+          setProcessingPayment(false);
+          return;
+        }
+
+        // Handle other errors
+        const errorMessage = txError?.message || txError?.toString() || 'Unknown transaction error';
+
+        setFormErrors([
+          'Payment transaction failed.',
+          'Transaction signature is cancelled.',
+          errorMessage,
+          'Your wallet was not charged. Please try again.'
+        ]);
         setProcessingPayment(false);
         return;
       }
 
-      console.log('Transaction successful:', signature);
-
       // STEP 8: Automatically create order after successful payment
       try {
+        // Clear any old JWT token to ensure fresh authentication
+        if (typeof window !== 'undefined') {
+          const oldToken = window.localStorage.getItem('jwtToken');
+          if (oldToken) {
+            console.log("🧹 Clearing old JWT token for fresh authentication");
+            window.localStorage.removeItem('jwtToken');
+          }
+        }
+
         // Authenticate wallet first
-        console.log("Authenticating wallet before creating order:", address);
+        console.log("🔑 Authentication Debug:");
+        console.log("  Connected wallet address:", address);
+        console.log("  Transaction signature:", signature);
+        
         const authResult = await authenticateWallet({
           variables: {
             walletAddress: address,
@@ -837,19 +1021,44 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         console.log("User data being sent:", userData);
         console.log("Payment token: USDT");
         console.log("Payment amount:", paymentAmount);
-        // TODO: Backend needs to accept cryptoCurrency and cryptoAmount parameters
+        console.log("🔍 BACKEND REQUEST DEBUG:", {
+          topupProductItemId: productItem.id,
+          transactionSignature: signature,
+          userData: userData,
+          cryptoCurrency: 'USDT',
+          cryptoAmount: paymentAmount,
+          cryptoAmountType: typeof paymentAmount,
+          originalProductPrice: productItem.price,
+          originalProductCurrency: productItem.currency,
+          convertedToUSD: productPriceUsd,
+          roundedPaymentAmount: paymentAmount
+        });
         const result = await createOrder({
           variables: {
             topupProductItemId: productItem.id,
             transactionSignature: signature,
             userData: Object.keys(userData).length > 0 ? userData : undefined,
-            // cryptoCurrency: 'USDT', // TODO: Add to backend schema
-            // cryptoAmount: paymentAmount, // TODO: Add to backend schema
+            cryptoCurrency: 'USDT',
+            cryptoAmount: paymentAmount,
           },
         });
 
         if (result.data?.createOrder?.errors && result.data.createOrder.errors.length > 0) {
-          setFormErrors(result.data.createOrder.errors);
+          console.error('❌ Backend validation errors:', result.data.createOrder.errors);
+          console.log('📦 Product item sent:', {
+            id: productItem.id,
+            price: productItem.price,
+            displayName: productItem.displayName
+          });
+          setFormErrors([
+            'Backend Error:',
+            ...result.data.createOrder.errors,
+            '',
+            'Debug info:',
+            `Product ID: ${productItem.id}`,
+            `Product Price: $${productItem.price}`,
+            `Payment Amount: ${paymentAmount} USDT`
+          ]);
           setProcessingPayment(false);
         } else if (result.data?.createOrder?.order) {
           if (process.env.NODE_ENV === 'development') {
@@ -939,15 +1148,38 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         setProcessingPayment(false);
       }
     } catch (err: any) {
-      console.error('Payment error:', err);
+      // Handle payment errors in UI only (don't log to console)
 
-      // Parse and display the error message
-      const errorMessage = err.message || 'Payment failed';
+      // Check if user cancelled the transaction
+      if (err?.message === 'USER_CANCELLED_TRANSACTION' || (err as any)?.code === 'USER_CANCELLED') {
+        console.log('ℹ️ User cancelled the transaction (outer catch)');
+        setFormErrors([
+          '❌ Transaction Cancelled',
+          'You cancelled the transaction.',
+          '',
+          '✅ Your order has been cancelled. No payment was made.',
+          '',
+          'Click "Pay with USDT" again when you\'re ready to complete the purchase.'
+        ]);
+        setProcessingPayment(false);
+        return;
+      }
+
+      // Handle empty error objects or missing error messages
+      let errorMessage = 'Payment failed';
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.toString && err.toString() !== '[object Object]') {
+        errorMessage = err.toString();
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+
       const errors = [errorMessage];
 
       // Add helpful tips if not already in error message
-      if (!errorMessage.includes('faucet') && !errorMessage.includes('Insufficient balance')) {
-        errors.push('Tip: Make sure you have enough SOL in your wallet for the transaction and gas fees.');
+      if (!errorMessage.includes('faucet') && !errorMessage.includes('Insufficient balance') && !errorMessage.includes('cancelled')) {
+        errors.push('Tip: Make sure you have enough USDT and SOL (for gas fees) in your wallet.');
       }
 
       setFormErrors(errors);
@@ -966,6 +1198,23 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     setFormErrors([]);
 
     try {
+      // Validate payment amount first
+      if (productPriceUsd <= 0) {
+        setFormErrors([
+          'Invalid price: Product price is $' + productPriceUsd,
+          'This product may not have a valid price set.',
+          'Please contact support or try a different product.'
+        ]);
+        setProcessingPayment(false);
+        return;
+      }
+
+      console.log('💰 Simulated Payment Debug:', {
+        productItemPrice: productItem.price,
+        productPriceUsd: productPriceUsd,
+        productItem: productItem
+      });
+
       // Check email verification
       const user = currentUserData?.currentUser;
       if (!user?.email) {
@@ -989,6 +1238,31 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       if (missingFields.length > 0) {
         setFormErrors([`Please fill in required fields: ${missingFields.join(", ")}`]);
+        setProcessingPayment(false);
+        return;
+      }
+
+      // Check USDT balance (educational - simulated payment doesn't actually transfer)
+      console.log('💰 Checking USDT balance (simulated payment)...');
+      console.log('Current balance:', usdtBalance, 'USDT');
+      console.log('Required amount:', productPriceUsd, 'USDT');
+
+      if (usdtBalance !== null && usdtBalance < productPriceUsd) {
+        const network = process.env.NEXT_PUBLIC_SOLANA_RPC?.includes('devnet') ? 'devnet' : 'mainnet';
+        setFormErrors([
+          `⚠️ Insufficient USDT balance (Simulation Mode)`,
+          `You have: ${usdtBalance.toFixed(2)} USDT`,
+          `Required: ${productPriceUsd.toFixed(2)} USDT`,
+          `Shortfall: ${(productPriceUsd - usdtBalance).toFixed(2)} USDT`,
+          '',
+          '📝 This is a simulated payment for testing, but you would need more USDT for a real transaction.',
+          '',
+          network === 'devnet'
+            ? '💡 Get devnet USDT from: https://faucet.solana.com'
+            : '💡 Purchase USDT on an exchange and transfer to your wallet',
+          '',
+          'Click "Simulate Payment" again to proceed anyway (demo mode).'
+        ]);
         setProcessingPayment(false);
         return;
       }
@@ -1029,19 +1303,43 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       // Create order with simulated signature
       console.log("Simulated payment token: USDT");
       console.log("Simulated payment amount:", productPriceUsd);
-      // TODO: Backend needs to accept cryptoCurrency and cryptoAmount parameters
+      console.log("🔍 BACKEND REQUEST DEBUG (SIMULATED):", {
+        topupProductItemId: productItem.id,
+        transactionSignature: mockSignature,
+        userData: userData,
+        cryptoCurrency: 'USDT',
+        cryptoAmount: productPriceUsd,
+        cryptoAmountType: typeof productPriceUsd,
+        originalProductPrice: productItem.price,
+        originalProductCurrency: productItem.currency,
+        convertedToUSD: productPriceUsd
+      });
       const result = await createOrder({
         variables: {
           topupProductItemId: productItem.id,
           transactionSignature: mockSignature,
           userData: Object.keys(userData).length > 0 ? userData : undefined,
-          // cryptoCurrency: 'USDT', // TODO: Add to backend schema
-          // cryptoAmount: productPriceUsd, // TODO: Add to backend schema
+          cryptoCurrency: 'USDT',
+          cryptoAmount: productPriceUsd,
         },
       });
 
       if (result.data?.createOrder?.errors && result.data.createOrder.errors.length > 0) {
-        setFormErrors(result.data.createOrder.errors);
+        console.error('❌ Backend validation errors (simulated):', result.data.createOrder.errors);
+        console.log('📦 Product item sent:', {
+          id: productItem.id,
+          price: productItem.price,
+          displayName: productItem.displayName
+        });
+        setFormErrors([
+          'Backend Error (Simulated Payment):',
+          ...result.data.createOrder.errors,
+          '',
+          'Debug info:',
+          `Product ID: ${productItem.id}`,
+          `Product Price: $${productItem.price}`,
+          `Payment Amount: ${productPriceUsd} USDT`
+        ]);
         setProcessingPayment(false);
       } else if (result.data?.createOrder?.order) {
         if (process.env.NODE_ENV === 'development') {
@@ -1056,7 +1354,20 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       }
     } catch (err: any) {
       console.error('Simulation error:', err);
-      setFormErrors([err.message || "Failed to create simulated order"]);
+      console.error('Simulation error type:', typeof err);
+      console.error('Simulation error keys:', Object.keys(err));
+
+      // Handle empty error objects or missing error messages
+      let errorMessage = 'Failed to create simulated order';
+      if (err?.message) {
+        errorMessage = err.message;
+      } else if (err?.toString && err.toString() !== '[object Object]') {
+        errorMessage = err.toString();
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+
+      setFormErrors([errorMessage]);
       setProcessingPayment(false);
     }
   }, [isConnected, address, userInputFields, userData, productPriceUsd, authenticateWallet, createOrder, productItem, currentUserData, createGameAccount, validateGameAccount, refetchGameAccounts, showConfirmation]);
@@ -1086,12 +1397,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             <span className="text-sm opacity-70">Order Number:</span>
             <span className="font-mono font-semibold">{orderResult.orderNumber}</span>
           </div>
-          <div className="flex justify-between border-b border-white/10 pb-2">
-            <span className="text-sm opacity-70">Fiat Amount:</span>
-            <span className="font-semibold">
-              {orderResult.amount} {orderResult.currency}
-            </span>
-          </div>
           {/* Display crypto amount - use cryptoTransaction data if top-level fields are filtered */}
           {(() => {
             const cryptoAmount = orderResult.cryptoAmount && orderResult.cryptoAmount !== "[FILTERED]"
@@ -1100,18 +1405,28 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             const cryptoCurrency = orderResult.cryptoCurrency && orderResult.cryptoCurrency !== "[FILTERED]"
               ? orderResult.cryptoCurrency
               : orderResult.cryptoTransaction?.token;
-
+            
+            // Show crypto amount if available, otherwise show fiat amount
             if (cryptoAmount && cryptoCurrency) {
               return (
                 <div className="flex justify-between border-b border-white/10 pb-2">
-                  <span className="text-sm opacity-70">Crypto Amount:</span>
+                  <span className="text-sm opacity-70">Amount:</span>
                   <span className="font-mono font-semibold text-green-400">
                     {typeof cryptoAmount === 'number' ? cryptoAmount.toFixed(6) : cryptoAmount} {cryptoCurrency}
                   </span>
                 </div>
               );
             }
-            return null;
+            
+            // Fallback to fiat amount
+            return (
+              <div className="flex justify-between border-b border-white/10 pb-2">
+                <span className="text-sm opacity-70">Amount:</span>
+                <span className="font-semibold">
+                  {orderResult.amount} {orderResult.currency}
+                </span>
+              </div>
+            );
           })()}
           <div className="flex justify-between border-b border-white/10 pb-2">
             <span className="text-sm opacity-70">Status:</span>
@@ -1209,15 +1524,29 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       {/* USDT Balance Display */}
       {isConnected && (
-        <div className="mb-6 rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30 p-4">
+        <div className={`mb-6 rounded-lg p-4 ${
+          usdtBalance !== null && usdtBalance < productPriceUsd
+            ? 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/30'
+            : 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30'
+        }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"/>
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd"/>
-              </svg>
+              {usdtBalance !== null && usdtBalance < productPriceUsd ? (
+                <svg className="w-6 h-6 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M8.433 7.418c.155-.103.346-.196.567-.267v1.698a2.305 2.305 0 01-.567-.267C8.07 8.34 8 8.114 8 8c0-.114.07-.34.433-.582zM11 12.849v-1.698c.22.071.412.164.567.267.364.243.433.468.433.582 0 .114-.07.34-.433.582a2.305 2.305 0 01-.567.267z"/>
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd"/>
+                </svg>
+              )}
               <div>
-                <p className="text-sm font-semibold text-green-300">USDT Balance</p>
+                <p className={`text-sm font-semibold ${
+                  usdtBalance !== null && usdtBalance < productPriceUsd ? 'text-red-300' : 'text-green-300'
+                }`}>
+                  USDT Balance {usdtBalance !== null && usdtBalance < productPriceUsd && '⚠️'}
+                </p>
                 <p className="text-xs text-white/60">Stablecoin (Solana)</p>
               </div>
             </div>
@@ -1225,28 +1554,60 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               {loadingUsdtBalance ? (
                 <p className="text-lg font-bold text-green-400">Loading...</p>
               ) : (
-                <p className="text-lg font-bold text-green-400">
+                <p className={`text-lg font-bold ${
+                  usdtBalance !== null && usdtBalance < productPriceUsd ? 'text-red-400' : 'text-green-400'
+                }`}>
                   {usdtBalance !== null ? usdtBalance.toFixed(2) : '0.00'} USDT
                 </p>
               )}
             </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-green-500/20">
+          <div className={`mt-3 pt-3 border-t ${
+            usdtBalance !== null && usdtBalance < productPriceUsd ? 'border-red-500/20' : 'border-green-500/20'
+          }`}>
             <div className="flex items-center justify-between text-sm">
               <span className="text-white/60">Payment Amount:</span>
               <span className="font-bold text-white">{productPriceUsd.toFixed(2)} USDT</span>
             </div>
+            {usdtBalance !== null && usdtBalance < productPriceUsd && (
+              <div className="mt-2 pt-2 border-t border-red-500/20">
+                <div className="flex items-center gap-2 text-sm text-red-300">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                  </svg>
+                  <span className="font-semibold">
+                    Insufficient: Need {(productPriceUsd - usdtBalance).toFixed(2)} more USDT
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Error Display */}
       {formErrors.length > 0 && (
-        <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/30 p-4">
-          <h4 className="mb-2 font-semibold text-red-300">Errors:</h4>
-          <ul className="list-inside list-disc text-sm text-red-200">
+        <div className={`mb-4 rounded-lg border p-4 ${
+          formErrors[0]?.includes('Cancelled') || formErrors[0]?.includes('cancelled')
+            ? 'bg-blue-500/10 border-blue-500/30'
+            : 'bg-red-500/10 border-red-500/30'
+        }`}>
+          <h4 className={`mb-2 font-semibold ${
+            formErrors[0]?.includes('Cancelled') || formErrors[0]?.includes('cancelled')
+              ? 'text-blue-300'
+              : 'text-red-300'
+          }`}>
+            {formErrors[0]?.includes('Cancelled') || formErrors[0]?.includes('cancelled') ? 'Notice:' : 'Errors:'}
+          </h4>
+          <ul className={`list-inside text-sm ${
+            formErrors[0]?.includes('Cancelled') || formErrors[0]?.includes('cancelled')
+              ? 'text-blue-200 space-y-1'
+              : 'list-disc text-red-200'
+          }`}>
             {formErrors.map((error, index) => (
-              <li key={index}>{error}</li>
+              <li key={index} className={error.startsWith('✅') || error.startsWith('❌') ? 'list-none' : ''}>
+                {error}
+              </li>
             ))}
           </ul>
         </div>

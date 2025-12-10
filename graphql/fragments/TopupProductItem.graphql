@@ -4,6 +4,7 @@ fragment TopupProductItem on TopupProductItem {
   displayName
   icon
   price
+  currency
   formattedPrice
   active
   originId
