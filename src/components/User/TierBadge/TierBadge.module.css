@@ -1,0 +1,64 @@
+/* Base Tier Badge Styles */
+.tierBadge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  width: fit-content;
+  position: relative;
+  top: 1px;
+}
+
+.badgeIcon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.badgeText {
+  letter-spacing: 0.3px;
+}
+
+.discountText {
+  font-size: 10px;
+  opacity: 0.9;
+  margin-left: 3px;
+}
+
+/* Elite (Silver) */
+.silver {
+  background: linear-gradient(135deg, #C0C0C0 0%, #E8E8E8 100%);
+  color: #333;
+  border: 2px solid #A0A0A0;
+}
+
+/* Grandmaster (Gold) */
+.gold {
+  background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+  color: #333;
+  border: 2px solid #DAA520;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4);
+}
+
+/* Legend (Orange with Glow) */
+.orange {
+  background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
+  color: #FFF;
+  border: 2px solid #FF6B35;
+  box-shadow: 0 0 20px rgba(255, 107, 53, 0.6);
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(255, 107, 53, 0.6);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(255, 107, 53, 0.9);
+    transform: scale(1.02);
+  }
+}

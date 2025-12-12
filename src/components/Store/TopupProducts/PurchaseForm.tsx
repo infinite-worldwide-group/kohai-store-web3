@@ -29,6 +29,24 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     fetchPolicy: 'cache-and-network', // Use cache first, but fetch fresh data
     notifyOnNetworkStatusChange: true,
   });
+
+  // Get user's tier discount
+  const user = currentUserData?.currentUser;
+  // Tier discount fallback - MATCH BACKEND CONFIG
+  const getTierDiscount = (tierName: string | null | undefined): number => {
+    if (!tierName) return 0;
+    const lowerTier = tierName.toLowerCase();
+    if (lowerTier === "elite") return 1;
+    if (lowerTier === "grandmaster") return 2;
+    if (lowerTier === "legend") return 3;
+    return 0;
+  };
+
+  // Always use backend discountPercent if provided (>= 0), otherwise fallback to tier name
+  const userDiscountPercent = (user?.discountPercent !== undefined && user?.discountPercent !== null && user.discountPercent >= 0)
+    ? user.discountPercent
+    : getTierDiscount(user?.tierName);
+
   const [orderResult, setOrderResult] = useState<any>(null);
   const [userData, setUserData] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
@@ -455,6 +473,12 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     return converted || productPriceUsd;
   }, [productPriceUsd, selectedCurrency.code, convertPrice]);
 
+  // Calculate discounted prices
+  const discountAmount = (convertedPrice * userDiscountPercent) / 100;
+  const discountedPrice = convertedPrice - discountAmount;
+  const discountedPriceUsd = productPriceUsd - ((productPriceUsd * userDiscountPercent) / 100);
+  const hasDiscount = userDiscountPercent > 0;
+
   // Check if account exists in saved accounts (no auto-save)
   const checkAccountExists = useCallback(async (data: Record<string, string>) => {
     if (process.env.NODE_ENV === 'development') {
@@ -827,16 +851,19 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       // STEP 3: Calculate USDT payment amount (1:1 with USD)
       // For very small amounts (< 0.01), use 6 decimal places
       // For normal amounts, use 2 decimal places
-      const paymentAmount = productPriceUsd < 0.01 
-        ? parseFloat(productPriceUsd.toFixed(6))
-        : parseFloat(productPriceUsd.toFixed(2));
-        
+      // Use discounted price if user has a tier discount
+      const paymentAmount = discountedPriceUsd < 0.01
+        ? parseFloat(discountedPriceUsd.toFixed(6))
+        : parseFloat(discountedPriceUsd.toFixed(2));
+
       console.log('💰 Payment Debug:', {
         productItemPrice: productItem.price,
         productPriceUsd: productPriceUsd,
+        discountedPriceUsd: discountedPriceUsd,
+        userDiscountPercent: userDiscountPercent,
         paymentAmount: paymentAmount,
-        paymentAmountFormatted: paymentAmount < 0.01 
-          ? paymentAmount.toFixed(6) 
+        paymentAmountFormatted: paymentAmount < 0.01
+          ? paymentAmount.toFixed(6)
           : paymentAmount.toFixed(2),
         productItem: productItem
       });
@@ -857,7 +884,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       // STEP 6: Validate payment amount
       if (paymentAmount <= 0) {
         setFormErrors([
-          'Invalid price: Product price is $' + productPriceUsd,
+          'Invalid price: Product price is $' + discountedPriceUsd.toFixed(2),
           'This product may not have a valid price set.',
           'Please contact support or try a different product.'
         ]);
@@ -920,7 +947,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       console.log('Payment details:', {
         merchantAddress,
-        priceUsd: productPriceUsd,
+        originalPriceUsd: productPriceUsd,
+        discountedPriceUsd: discountedPriceUsd,
+        discount: userDiscountPercent + '%',
         token: 'USDT',
         tokenAmount: paymentAmount.toFixed(2),
         from: address,
@@ -1031,6 +1060,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           originalProductPrice: productItem.price,
           originalProductCurrency: productItem.currency,
           convertedToUSD: productPriceUsd,
+          discountPercent: userDiscountPercent,
+          discountedPriceUsd: discountedPriceUsd,
           roundedPaymentAmount: paymentAmount
         });
         const result = await createOrder({
@@ -1199,9 +1230,10 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
     try {
       // Validate payment amount first
-      if (productPriceUsd <= 0) {
+      const finalPaymentAmount = hasDiscount ? discountedPriceUsd : productPriceUsd;
+      if (finalPaymentAmount <= 0) {
         setFormErrors([
-          'Invalid price: Product price is $' + productPriceUsd,
+          'Invalid price: Product price is $' + finalPaymentAmount.toFixed(2),
           'This product may not have a valid price set.',
           'Please contact support or try a different product.'
         ]);
@@ -1300,19 +1332,21 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         console.log("JWT token stored successfully");
       }
 
-      // Create order with simulated signature
+      // Create order with simulated signature (finalPaymentAmount already declared at top)
       console.log("Simulated payment token: USDT");
-      console.log("Simulated payment amount:", productPriceUsd);
+      console.log("Simulated payment amount:", finalPaymentAmount);
       console.log("🔍 BACKEND REQUEST DEBUG (SIMULATED):", {
         topupProductItemId: productItem.id,
         transactionSignature: mockSignature,
         userData: userData,
         cryptoCurrency: 'USDT',
-        cryptoAmount: productPriceUsd,
-        cryptoAmountType: typeof productPriceUsd,
+        cryptoAmount: finalPaymentAmount,
+        cryptoAmountType: typeof finalPaymentAmount,
         originalProductPrice: productItem.price,
         originalProductCurrency: productItem.currency,
-        convertedToUSD: productPriceUsd
+        convertedToUSD: productPriceUsd,
+        discountPercent: userDiscountPercent,
+        discountedPrice: discountedPriceUsd
       });
       const result = await createOrder({
         variables: {
@@ -1320,7 +1354,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           transactionSignature: mockSignature,
           userData: Object.keys(userData).length > 0 ? userData : undefined,
           cryptoCurrency: 'USDT',
-          cryptoAmount: productPriceUsd,
+          cryptoAmount: finalPaymentAmount,
         },
       });
 
@@ -1338,7 +1372,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           'Debug info:',
           `Product ID: ${productItem.id}`,
           `Product Price: $${productItem.price}`,
-          `Payment Amount: ${productPriceUsd} USDT`
+          `Payment Amount: ${finalPaymentAmount} USDT`
         ]);
         setProcessingPayment(false);
       } else if (result.data?.createOrder?.order) {
@@ -1507,16 +1541,54 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           </div>
           <div className="text-right">
             {/* Show price in selected currency */}
-            <p className="text-2xl font-bold">
-              {formatPrice(convertedPrice, selectedCurrency)}
-            </p>
+            {hasDiscount ? (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
+                  <p className="text-lg font-medium" style={{ textDecoration: 'line-through', opacity: 0.6 }}>
+                    {formatPrice(convertedPrice, selectedCurrency)}
+                  </p>
+                  <p className="text-2xl font-bold" style={{ color: '#00C853' }}>
+                    {formatPrice(discountedPrice, selectedCurrency)}
+                  </p>
+                </div>
+                <span style={{
+                  fontSize: '0.75em',
+                  background: '#00C853',
+                  color: 'white',
+                  padding: '2px 8px',
+                  borderRadius: '4px',
+                  display: 'inline-block',
+                  marginTop: '4px'
+                }}>
+                  -{userDiscountPercent}% VIP Discount
+                </span>
+              </div>
+            ) : (
+              <p className="text-2xl font-bold">
+                {formatPrice(convertedPrice, selectedCurrency)}
+              </p>
+            )}
             {selectedCurrency.code !== 'USD' && (
               <p className="text-sm opacity-70 mt-1">
-                ≈ ${productPriceUsd.toFixed(2)} USD
+                {hasDiscount && (
+                  <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: '8px' }}>
+                    ${productPriceUsd.toFixed(2)}
+                  </span>
+                )}
+                <span style={hasDiscount ? { color: '#00C853', fontWeight: 'bold' } : {}}>
+                  ≈ ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USD
+                </span>
               </p>
             )}
             <p className="text-xs opacity-60 mt-1">
-              Payment: {productPriceUsd.toFixed(2)} USDT
+              {hasDiscount && (
+                <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: '8px' }}>
+                  {productPriceUsd.toFixed(2)} USDT
+                </span>
+              )}
+              <span style={hasDiscount ? { color: '#00C853', fontWeight: 'bold' } : {}}>
+                Payment: {hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USDT
+              </span>
             </p>
           </div>
         </div>
@@ -1937,15 +2009,55 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               <div className="mb-3 rounded-lg bg-white/5 p-3">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-sm opacity-70">Price:</span>
-                  <span className="font-semibold">
-                    ${productPriceUsd.toFixed(2)} USD
-                  </span>
+                  <div className="text-right">
+                    {hasDiscount ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '0.9em' }}>
+                          {formatPrice(convertedPrice, selectedCurrency)}
+                        </span>
+                        <span className="font-semibold" style={{ color: '#00C853' }}>
+                          {formatPrice(discountedPrice, selectedCurrency)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-semibold">
+                        {formatPrice(convertedPrice, selectedCurrency)}
+                      </span>
+                    )}
+                  </div>
                 </div>
+                {hasDiscount && (
+                  <div className="flex justify-between items-center mb-1">
+                    <span></span>
+                    <span style={{
+                      fontSize: '0.65em',
+                      background: '#00C853',
+                      color: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px'
+                    }}>
+                      -{userDiscountPercent}% VIP Discount
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center">
                   <span className="text-sm opacity-70">You will pay:</span>
-                  <span className="font-mono font-bold text-green-400">
-                    {productPriceUsd.toFixed(2)} USDT
-                  </span>
+                  <div className="text-right">
+                    {hasDiscount ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '0.9em' }}>
+                          {productPriceUsd.toFixed(2)} USDT
+                        </span>
+                        <span className="font-mono font-bold text-green-400">
+                          {discountedPriceUsd.toFixed(2)} USDT
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="font-mono font-bold text-green-400">
+                        {productPriceUsd.toFixed(2)} USDT
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
               <button
@@ -1963,7 +2075,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     Processing Payment...
                   </span>
                 ) : (
-                  `💰 Pay ${productPriceUsd.toFixed(2)} USDT`
+                  `💰 Pay ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USDT`
                 )}
               </button>
 

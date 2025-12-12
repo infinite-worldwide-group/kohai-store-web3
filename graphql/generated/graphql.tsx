@@ -308,6 +308,8 @@ export type Query = {
   order?: Maybe<Order>;
   /** Get all supported currencies with live exchange rates */
   supportedCurrencies: Array<FiatCurrency>;
+  /** Get current user's VIP tier status with optional real-time blockchain check */
+  tierStatus: TierStatus;
   /** Get a single topup product by ID or slug */
   topupProduct?: Maybe<TopupProduct>;
   /** Get all topup products with filtering */
@@ -347,6 +349,11 @@ export type QuerySupportedCurrenciesArgs = {
 };
 
 
+export type QueryTierStatusArgs = {
+  forceRefresh?: InputMaybe<Scalars['Boolean']['input']>;
+};
+
+
 export type QueryTopupProductArgs = {
   id?: InputMaybe<Scalars['ID']['input']>;
   slug?: InputMaybe<Scalars['String']['input']>;
@@ -376,6 +383,29 @@ export type SendEmailVerificationCodePayload = {
   success: Scalars['Boolean']['output'];
 };
 
+/** User's VIP tier status information */
+export type TierStatus = {
+  __typename?: 'TierStatus';
+  /** Badge display text */
+  badge?: Maybe<Scalars['String']['output']>;
+  /** Current $KOHAI token balance */
+  balance: Scalars['Float']['output'];
+  /** Whether this data is from cache */
+  cached: Scalars['Boolean']['output'];
+  /** Discount percentage for orders */
+  discountPercent: Scalars['Int']['output'];
+  /** When tier was last checked */
+  lastCheckedAt?: Maybe<Scalars['ISO8601DateTime']['output']>;
+  /** Referral commission percentage */
+  referralPercent: Scalars['Int']['output'];
+  /** UI style (silver, gold, orange) */
+  style?: Maybe<Scalars['String']['output']>;
+  /** Tier identifier (elite, grandmaster, legend) */
+  tier?: Maybe<Scalars['String']['output']>;
+  /** Display name for tier */
+  tierName?: Maybe<Scalars['String']['output']>;
+};
+
 /** A game topup product */
 export type TopupProduct = {
   __typename?: 'TopupProduct';
@@ -387,12 +417,16 @@ export type TopupProduct = {
   createdAt: Scalars['ISO8601DateTime']['output'];
   description?: Maybe<Scalars['String']['output']>;
   featured: Scalars['Boolean']['output'];
+  /** Base game name (extracted from title) */
+  gameName: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   isActive: Scalars['Boolean']['output'];
   logoUrl?: Maybe<Scalars['String']['output']>;
   originId?: Maybe<Scalars['String']['output']>;
   publisher?: Maybe<Scalars['String']['output']>;
   publisherLogoUrl?: Maybe<Scalars['String']['output']>;
+  /** Region code extracted from title (e.g., MY/SG, PH/TH) */
+  regionCode: Scalars['String']['output'];
   slug?: Maybe<Scalars['String']['output']>;
   title: Scalars['String']['output'];
   /** Available items/packages for this product */
@@ -440,10 +474,22 @@ export type UpdateEmailPayload = {
 export type User = {
   __typename?: 'User';
   createdAt: Scalars['ISO8601DateTime']['output'];
+  /** Current discount percentage */
+  discountPercent: Scalars['Int']['output'];
   email?: Maybe<Scalars['String']['output']>;
   emailVerified: Scalars['Boolean']['output'];
   emailVerifiedAt?: Maybe<Scalars['ISO8601DateTime']['output']>;
   id: Scalars['ID']['output'];
+  /** Current $KOHAI token balance */
+  kohaiBalance?: Maybe<Scalars['Float']['output']>;
+  /** Current VIP tier (elite, grandmaster, legend) */
+  tier?: Maybe<Scalars['String']['output']>;
+  /** Badge display name */
+  tierBadge?: Maybe<Scalars['String']['output']>;
+  /** Display name for tier */
+  tierName?: Maybe<Scalars['String']['output']>;
+  /** UI style (silver, gold, orange) */
+  tierStyle?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['ISO8601DateTime']['output'];
   walletAddress: Scalars['String']['output'];
 };
@@ -482,7 +528,7 @@ export type TopupProductListFragment = { __typename?: 'TopupProduct', id: string
 
 export type TopupProductItemFragment = { __typename?: 'TopupProductItem', id: string, name?: string | null, displayName: string, icon?: string | null, price?: number | null, currency: string, formattedPrice: string, active: boolean, originId?: string | null, topupProductId: string };
 
-export type UserSessionFragment = { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any };
+export type UserSessionFragment = { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null };
 
 export type AuthenticateWalletMutationVariables = Exact<{
   walletAddress: Scalars['String']['input'];
@@ -491,7 +537,7 @@ export type AuthenticateWalletMutationVariables = Exact<{
 }>;
 
 
-export type AuthenticateWalletMutation = { __typename?: 'Mutation', authenticateWallet?: { __typename?: 'AuthenticateWalletPayload', token?: string | null, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any } | null } | null };
+export type AuthenticateWalletMutation = { __typename?: 'Mutation', authenticateWallet?: { __typename?: 'AuthenticateWalletPayload', token?: string | null, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null } | null };
 
 export type CreateGameAccountMutationVariables = Exact<{
   topupProductId: Scalars['Int']['input'];
@@ -548,12 +594,12 @@ export type VerifyEmailMutationVariables = Exact<{
 }>;
 
 
-export type VerifyEmailMutation = { __typename?: 'Mutation', verifyEmail?: { __typename?: 'VerifyEmailPayload', success: boolean, message: string, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any } | null } | null };
+export type VerifyEmailMutation = { __typename?: 'Mutation', verifyEmail?: { __typename?: 'VerifyEmailPayload', success: boolean, message: string, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null } | null };
 
 export type CurrentUserQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type CurrentUserQuery = { __typename?: 'Query', currentUser?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any } | null };
+export type CurrentUserQuery = { __typename?: 'Query', currentUser?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null };
 
 export type MyGameAccountsQueryVariables = Exact<{
   topupProductId?: InputMaybe<Scalars['Int']['input']>;
@@ -734,6 +780,13 @@ export const UserSessionFragmentDoc = gql`
   emailVerified
   emailVerifiedAt
   updatedAt
+  walletAddress
+  tier
+  tierName
+  discountPercent
+  kohaiBalance
+  tierBadge
+  tierStyle
 }
     `;
 export const AuthenticateWalletDocument = gql`

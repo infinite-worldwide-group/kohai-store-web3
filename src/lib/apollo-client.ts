@@ -18,6 +18,11 @@ export function getApolloClient() {
             const hasToken = typeof window !== 'undefined' && window.localStorage.getItem('jwtToken');
             if (!hasToken) return; // Don't log if user isn't authenticated yet
           }
+          // Skip known backend schema errors (temporary until backend fixes)
+          if (message.includes('uninitialized constant GraphQL::Types::Decimal')) {
+            console.warn('[Backend Schema Error]: Decimal type not defined in backend. Please update backend schema.');
+            return;
+          }
           console.error(
             `[GraphQL error]: Message: ${message}, Location: ${locations}, Path: ${path}`,
           );

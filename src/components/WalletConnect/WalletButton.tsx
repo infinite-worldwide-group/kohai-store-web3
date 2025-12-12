@@ -3,6 +3,8 @@
 import { useWallet } from "@/contexts/WalletContext";
 import { useCurrentUserQuery } from "graphql/generated/graphql";
 import { useEmailVerification } from "@/contexts/EmailVerificationContext";
+import UserTierDisplay from "@/components/User/UserTierDisplay";
+import TierBadge from "@/components/User/TierBadge";
 import { useState, useEffect } from "react";
 
 /**
@@ -358,6 +360,25 @@ const WalletButton = () => {
   const hasEmail = !!user?.email;
   const isEmailVerified = !!user?.emailVerified;
 
+  // Calculate tier info from tier name if backend values are missing - MATCH BACKEND CONFIG
+  const getTierInfo = (tierName: string | null | undefined) => {
+    if (!tierName) return null;
+    const lowerTier = tierName.toLowerCase();
+    if (lowerTier === "elite") return { discount: 1, style: "silver" };
+    if (lowerTier === "grandmaster") return { discount: 2, style: "gold" };
+    if (lowerTier === "legend") return { discount: 3, style: "orange" };
+    return null;
+  };
+
+  const tierInfo = getTierInfo(user?.tierName);
+
+  // Always use backend discountPercent if provided (>= 0), otherwise fallback to tier config
+  const actualDiscount = (user?.discountPercent !== undefined && user?.discountPercent !== null && user.discountPercent >= 0)
+    ? user.discountPercent
+    : (tierInfo?.discount || 0);
+
+  const actualStyle = user?.tierStyle || (tierInfo?.style || null);
+
   // Show loading if:
   // 1. Explicitly loading user data (isLoadingUserData = true)
   // 2. GraphQL query is loading (userDataLoading = true)
@@ -439,6 +460,18 @@ const WalletButton = () => {
           <WalletIcon />
           <span className="hidden sm:inline font-mono">{shortenAddress(address!)}</span>
 
+          {/* Tier Badge - Always visible */}
+          {!isLoading && user?.tier && (
+            <div className="hidden lg:flex ml-1">
+              <TierBadge
+                tierName={user.tierName || null}
+                tierStyle={actualStyle}
+                discountPercent={actualDiscount}
+                compact
+              />
+            </div>
+          )}
+
           {/* Email Verification Badge */}
           {isLoading ? (
             <span className="hidden md:flex items-center gap-1 ml-1 px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-semibold border border-blue-500/30" title="Loading...">
@@ -473,7 +506,7 @@ const WalletButton = () => {
           />
 
           {/* Dropdown content */}
-          <div className="absolute right-0 top-full mt-2 z-50 w-64 rounded-lg bg-gray-900 shadow-xl border border-white/10">
+          <div className="absolute right-0 top-full mt-2 z-50 w-80 rounded-lg bg-gray-900 shadow-xl border border-white/10">
             <div className="p-4">
               {/* Address */}
               <div className="mb-3">
@@ -488,6 +521,19 @@ const WalletButton = () => {
                   {balance !== null ? `${balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 6 })} USDT` : 'Loading...'}
                 </p>
               </div>
+
+              {/* VIP Tier Status */}
+              {!isLoading && user && (
+                <div className="mb-3">
+                  <UserTierDisplay
+                    tier={user.tier || null}
+                    tierName={user.tierName || null}
+                    tierStyle={actualStyle}
+                    discountPercent={actualDiscount}
+                    kohaiBalance={user.kohaiBalance || 0}
+                  />
+                </div>
+              )}
 
               {/* Email Verification Status */}
               <div className="mb-3">

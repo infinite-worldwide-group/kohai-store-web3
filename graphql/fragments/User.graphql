@@ -4,4 +4,13 @@ fragment UserSession on User {
   emailVerified
   emailVerifiedAt
   updatedAt
+  walletAddress
+
+  # VIP Tier fields
+  tier
+  tierName
+  discountPercent
+  kohaiBalance
+  tierBadge
+  tierStyle
 }
