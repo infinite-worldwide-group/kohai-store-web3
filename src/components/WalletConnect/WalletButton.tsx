@@ -5,6 +5,7 @@ import { useCurrentUserQuery } from "graphql/generated/graphql";
 import { useEmailVerification } from "@/contexts/EmailVerificationContext";
 import UserTierDisplay from "@/components/User/UserTierDisplay";
 import TierBadge from "@/components/User/TierBadge";
+import ReferralModal from "@/components/User/ReferralModal";
 import { useState, useEffect } from "react";
 
 /**
@@ -29,6 +30,7 @@ const WalletButton = () => {
   const [showDropdown, setShowDropdown] = useState(false);
   const [forceRender, setForceRender] = useState(0);
   const [isLoadingUserData, setIsLoadingUserData] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
 
   // Prevent hydration mismatch
   useEffect(() => {
@@ -595,9 +597,25 @@ const WalletButton = () => {
 
               {/* Actions */}
               <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    setShowDropdown(false);
+                    setShowReferralModal(true);
+                  }}
+                  className="flex items-center justify-center gap-2 w-full rounded-lg bg-gradient-to-r from-purple-500/20 to-blue-500/20 border border-purple-500/30 px-4 py-2 text-sm font-semibold transition hover:from-purple-500/30 hover:to-blue-500/30"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z" />
+                  </svg>
+                  💰 Referral Rewards
+                </button>
                 <a
                   href="/orders"
-                  className="flex items-center justify-center gap-2 w-full rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 px-4 py-2 text-sm font-semibold transition hover:from-blue-500/30 hover:to-purple-500/30"
+                  className="flex items-center justify-center gap-2 w-full rounded-lg bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 px-4 py-2 text-sm font-semibold transition hover:from-blue-500/30 hover:to-cyan-500/30"
                 >
                   <svg
                     className="h-4 w-4"
@@ -635,6 +653,12 @@ const WalletButton = () => {
         </>
       )}
       </div>
+
+      {/* Referral Modal */}
+      <ReferralModal
+        isOpen={showReferralModal}
+        onClose={() => setShowReferralModal(false)}
+      />
     </>
   );
 };

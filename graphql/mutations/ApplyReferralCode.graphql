@@ -1,0 +1,17 @@
+mutation ApplyReferralCode($code: String!) {
+  applyReferralCode(code: $code) {
+    referral {
+      id
+      appliedAt
+    }
+    voucher {
+      id
+      voucherType
+      discountPercent
+      expiresAt
+      active
+    }
+    message
+    errors
+  }
+}

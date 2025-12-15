@@ -1,0 +1,19 @@
+query GetReferralStats {
+  referralStats {
+    referralCode
+    totalReferrals
+    totalEarnings
+    claimableEarnings
+    claimedEarnings
+    recentEarnings {
+      id
+      orderAmount
+      commissionPercent
+      commissionAmount
+      currency
+      status
+      claimedAt
+      createdAt
+    }
+  }
+}

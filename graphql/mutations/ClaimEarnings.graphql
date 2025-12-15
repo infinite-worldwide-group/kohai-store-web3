@@ -1,0 +1,8 @@
+mutation ClaimEarnings {
+  claimEarnings {
+    transactionSignature
+    claimedAmount
+    message
+    errors
+  }
+}

@@ -1,0 +1,9 @@
+query GetReferralCode {
+  referralCode {
+    id
+    code
+    totalUses
+    totalEarnings
+    createdAt
+  }
+}

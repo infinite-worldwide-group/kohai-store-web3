@@ -1,0 +1,11 @@
+query GetActiveVouchers {
+  activeVouchers {
+    id
+    voucherType
+    discountPercent
+    expiresAt
+    used
+    active
+    createdAt
+  }
+}
