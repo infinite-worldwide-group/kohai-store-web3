@@ -1686,20 +1686,41 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             </div>
           </div>
           <div className={`mt-3 pt-3 border-t ${
-            usdtBalance !== null && usdtBalance < productPriceUsd ? 'border-red-500/20' : 'border-green-500/20'
+            usdtBalance !== null && usdtBalance < (hasDiscount ? discountedPriceUsd : productPriceUsd) ? 'border-red-500/20' : 'border-green-500/20'
           }`}>
             <div className="flex items-center justify-between text-sm">
               <span className="text-white/60">Payment Amount:</span>
-              <span className="font-bold text-white">{productPriceUsd.toFixed(2)} USDT</span>
+              <div className="text-right">
+                {hasDiscount ? (
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white/40 line-through text-xs">{productPriceUsd.toFixed(2)} USDT</span>
+                      <span className="font-bold text-green-400">{discountedPriceUsd.toFixed(2)} USDT</span>
+                    </div>
+                    <span style={{
+                      fontSize: '0.65em',
+                      background: isUsingVoucher ? '#9C27B0' : '#00C853',
+                      color: 'white',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      fontWeight: 'bold'
+                    }}>
+                      -{totalDiscountPercent}% {isUsingVoucher ? 'Voucher' : 'VIP'}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="font-bold text-white">{productPriceUsd.toFixed(2)} USDT</span>
+                )}
+              </div>
             </div>
-            {usdtBalance !== null && usdtBalance < productPriceUsd && (
+            {usdtBalance !== null && usdtBalance < (hasDiscount ? discountedPriceUsd : productPriceUsd) && (
               <div className="mt-2 pt-2 border-t border-red-500/20">
                 <div className="flex items-center gap-2 text-sm text-red-300">
                   <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
                   </svg>
                   <span className="font-semibold">
-                    Insufficient: Need {(productPriceUsd - usdtBalance).toFixed(2)} more USDT
+                    Insufficient: Need {((hasDiscount ? discountedPriceUsd : productPriceUsd) - usdtBalance).toFixed(2)} more USDT
                   </span>
                 </div>
               </div>
