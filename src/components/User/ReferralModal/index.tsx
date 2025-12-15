@@ -6,7 +6,7 @@ import {
   useGetReferralStatsQuery,
   useClaimEarningsMutation,
   useApplyReferralCodeMutation,
-  useCurrentUserQuery,
+  useGetActiveVouchersQuery,
 } from 'graphql/generated/graphql';
 
 interface ReferralModalProps {
