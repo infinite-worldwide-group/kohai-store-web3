@@ -15,7 +15,6 @@ interface ReferralModalProps {
 }
 
 const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
-  const { data: currentUserData } = useCurrentUserQuery();
   const { data: referralCodeData, loading: loadingCode, error: errorCode } = useGetReferralCodeQuery({
     skip: !isOpen,
   });
