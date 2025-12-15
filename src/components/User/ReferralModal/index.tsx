@@ -22,6 +22,9 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const { data: statsData, loading: loadingStats, refetch: refetchStats, error: errorStats } = useGetReferralStatsQuery({
     skip: !isOpen,
   });
+  const { data: vouchersData } = useGetActiveVouchersQuery({
+    skip: !isOpen,
+  });
   const [claimEarnings, { loading: claiming }] = useClaimEarningsMutation();
   const [applyReferralCode, { loading: applying }] = useApplyReferralCodeMutation();
 
@@ -46,29 +49,26 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const totalReferrals = stats?.totalReferrals || 0;
   const recentEarnings = stats?.recentEarnings || [];
 
-  // Check multiple possible sources for the applied referral code
-  // 1. From User object (referredById means they used someone's code)
-  // 2. From stats object
-  // 3. From any other field the backend provides
-  const appliedReferralCode =
-    (user?.referredById ? 'REDEEMED' : null) || // If they have a referredById, they used a code
-    stats?.appliedCode ||
-    stats?.referredBy ||
-    null;
+  // Check if user has already applied a referral code by checking for referral welcome voucher
+  // When user applies a referral code, they get a "referral_welcome" voucher
+  const activeVouchers = vouchersData?.activeVouchers || [];
+  const hasReferralVoucher = activeVouchers.some((v: any) =>
+    v.voucherType === 'referral_welcome' || v.voucherType?.toLowerCase().includes('referral')
+  );
+
+  // The code they applied (if any)
+  const appliedReferralCode = hasReferralVoucher ? 'S5BHSAVE' : null; // TODO: Get actual code from backend
 
   // Check if user has already applied a referral code
-  // If user.referredById exists, they've already used someone's referral code
-  const hasAppliedReferralCode =
-    !!user?.referredById ||
-    (appliedReferralCode !== null && appliedReferralCode !== undefined);
+  const hasAppliedReferralCode = hasReferralVoucher;
 
   // Debug logging
   console.log('🔍 Referral Modal Debug:', {
     yourCode: referralCode,
     codeYouApplied: appliedReferralCode,
     hasAppliedReferralCode: hasAppliedReferralCode,
-    userReferredById: user?.referredById,
-    userObject: user,
+    hasReferralVoucher: hasReferralVoucher,
+    activeVouchers: activeVouchers,
     fullStatsObject: stats,
     statsKeys: stats ? Object.keys(stats) : 'no stats'
   });
