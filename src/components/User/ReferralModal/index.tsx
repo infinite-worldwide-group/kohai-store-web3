@@ -40,7 +40,6 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
     errorStats
   });
 
-  const user = currentUserData?.currentUser;
   const referralCode = referralCodeData?.referralCode?.code;
   const stats = statsData?.referralStats;
   const claimableEarnings = stats?.claimableEarnings || 0;
