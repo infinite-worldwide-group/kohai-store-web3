@@ -37,6 +37,7 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
     errorStats
   });
 
+  const user = currentUserData?.currentUser;
   const referralCode = referralCodeData?.referralCode?.code;
   const stats = statsData?.referralStats;
   const claimableEarnings = stats?.claimableEarnings || 0;
@@ -44,20 +45,32 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const claimedEarnings = stats?.claimedEarnings || 0;
   const totalReferrals = stats?.totalReferrals || 0;
   const recentEarnings = stats?.recentEarnings || [];
-  
-  // The code they applied from someone else (if any)
-  // This should be DIFFERENT from referralCode which is THEIR own code
-  const appliedReferralCode = stats?.appliedCode || stats?.referredBy || null;
+
+  // Check multiple possible sources for the applied referral code
+  // 1. From User object (referredById means they used someone's code)
+  // 2. From stats object
+  // 3. From any other field the backend provides
+  const appliedReferralCode =
+    (user?.referredById ? 'REDEEMED' : null) || // If they have a referredById, they used a code
+    stats?.appliedCode ||
+    stats?.referredBy ||
+    null;
 
   // Check if user has already applied a referral code
-  // The backend tracks this - users can only apply ONE code ever
-  const hasAppliedReferralCode = appliedReferralCode !== null && appliedReferralCode !== undefined;
+  // If user.referredById exists, they've already used someone's referral code
+  const hasAppliedReferralCode =
+    !!user?.referredById ||
+    (appliedReferralCode !== null && appliedReferralCode !== undefined);
 
   // Debug logging
-  console.log('Referral codes:', {
+  console.log('🔍 Referral Modal Debug:', {
     yourCode: referralCode,
     codeYouApplied: appliedReferralCode,
-    stats: stats
+    hasAppliedReferralCode: hasAppliedReferralCode,
+    userReferredById: user?.referredById,
+    userObject: user,
+    fullStatsObject: stats,
+    statsKeys: stats ? Object.keys(stats) : 'no stats'
   });
 
   const handleCopyCode = () => {
