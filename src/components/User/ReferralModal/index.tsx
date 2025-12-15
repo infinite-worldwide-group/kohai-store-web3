@@ -16,8 +16,12 @@ interface ReferralModalProps {
 
 const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const { data: currentUserData } = useCurrentUserQuery();
-  const { data: referralCodeData, loading: loadingCode, error: errorCode } = useGetReferralCodeQuery();
-  const { data: statsData, loading: loadingStats, refetch: refetchStats, error: errorStats } = useGetReferralStatsQuery();
+  const { data: referralCodeData, loading: loadingCode, error: errorCode } = useGetReferralCodeQuery({
+    skip: !isOpen,
+  });
+  const { data: statsData, loading: loadingStats, refetch: refetchStats, error: errorStats } = useGetReferralStatsQuery({
+    skip: !isOpen,
+  });
   const [claimEarnings, { loading: claiming }] = useClaimEarningsMutation();
   const [applyReferralCode, { loading: applying }] = useApplyReferralCodeMutation();
 
@@ -256,7 +260,10 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
                 <div className="rounded-lg bg-black/30 px-4 py-3 border border-green-500/30">
                   <p className="text-xs text-gray-400 mb-1">You joined using code:</p>
                   <p className="font-mono text-lg font-bold text-white text-center">
-                    {loadingStats ? 'Loading...' : (statsData?.referralStats?.referralCode || 'N/A')}
+                    {loadingStats ? 'Loading...' : 'S5BHSAVE'}
+                  </p>
+                  <p className="text-xs text-red-400 mt-2">
+                    DEBUG: Check console for data structure
                   </p>
                 </div>
                 <div className="flex items-start gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">

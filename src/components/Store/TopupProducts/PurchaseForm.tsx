@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, useValidateGameAccountMutation, TopupProductItemFragment } from "graphql/generated/graphql";
+import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, useValidateGameAccountMutation, TopupProductItemFragment, useGetActiveVouchersQuery } from "graphql/generated/graphql";
 import { useWallet } from "@/contexts/WalletContext";
 import { useCurrency } from "@/components/Store/CurrencySelector";
 import dynamic from "next/dynamic";
@@ -69,9 +69,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
   const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
 
   // Check if user is authenticated (has JWT token)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Fetch active vouchers
+  const { data: vouchersData, loading: loadingVouchers } = useGetActiveVouchersQuery({
+    skip: !isConnected || !isAuthenticated,
+    fetchPolicy: 'cache-and-network',
+  });
   
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1071,6 +1078,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             userData: Object.keys(userData).length > 0 ? userData : undefined,
             cryptoCurrency: 'USDT',
             cryptoAmount: paymentAmount,
+            voucherId: selectedVoucherId || undefined,
           },
         });
 
@@ -1355,6 +1363,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           userData: Object.keys(userData).length > 0 ? userData : undefined,
           cryptoCurrency: 'USDT',
           cryptoAmount: finalPaymentAmount,
+          voucherId: selectedVoucherId || undefined,
         },
       });
 
@@ -1593,6 +1602,88 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           </div>
         </div>
       </div>
+
+      {/* Voucher Selector */}
+      {isConnected && vouchersData?.activeVouchers && vouchersData.activeVouchers.length > 0 && (
+        <div className="mb-6 rounded-lg bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z"/>
+              <path fillRule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd"/>
+            </svg>
+            <h4 className="font-semibold text-purple-300">Apply Voucher</h4>
+          </div>
+
+          {loadingVouchers ? (
+            <p className="text-sm text-gray-400">Loading vouchers...</p>
+          ) : (
+            <div className="space-y-2">
+              {/* No Voucher Option */}
+              <button
+                onClick={() => setSelectedVoucherId(null)}
+                className={`w-full text-left rounded-lg p-3 transition ${
+                  selectedVoucherId === null
+                    ? 'bg-white/20 border-2 border-purple-400'
+                    : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">No voucher</span>
+                  {selectedVoucherId === null && (
+                    <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+              </button>
+
+              {/* Voucher Options */}
+              {vouchersData.activeVouchers.map((voucher: any) => {
+                const isExpiringSoon = voucher.expiresAt && new Date(voucher.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+                return (
+                  <button
+                    key={voucher.id}
+                    onClick={() => setSelectedVoucherId(voucher.id)}
+                    className={`w-full text-left rounded-lg p-3 transition ${
+                      selectedVoucherId === voucher.id
+                        ? 'bg-white/20 border-2 border-purple-400'
+                        : 'bg-white/5 border border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-bold text-purple-300">
+                            -{voucher.discountPercent}%
+                          </span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
+                            {voucher.voucherType.replace(/_/g, ' ')}
+                          </span>
+                          {isExpiringSoon && (
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300">
+                              Expiring soon!
+                            </span>
+                          )}
+                        </div>
+                        {voucher.expiresAt && (
+                          <p className="text-xs text-gray-400 mt-1">
+                            Expires: {new Date(voucher.expiresAt).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      {selectedVoucherId === voucher.id && (
+                        <svg className="h-5 w-5 text-purple-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* USDT Balance Display */}
       {isConnected && (
