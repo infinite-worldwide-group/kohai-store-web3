@@ -6,6 +6,7 @@ import {
   useGetReferralStatsQuery,
   useClaimEarningsMutation,
   useApplyReferralCodeMutation,
+  useCurrentUserQuery,
 } from 'graphql/generated/graphql';
 
 interface ReferralModalProps {
@@ -14,14 +15,23 @@ interface ReferralModalProps {
 }
 
 const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
-  const { data: referralCodeData, loading: loadingCode } = useGetReferralCodeQuery();
-  const { data: statsData, loading: loadingStats, refetch: refetchStats } = useGetReferralStatsQuery();
+  const { data: currentUserData } = useCurrentUserQuery();
+  const { data: referralCodeData, loading: loadingCode, error: errorCode } = useGetReferralCodeQuery();
+  const { data: statsData, loading: loadingStats, refetch: refetchStats, error: errorStats } = useGetReferralStatsQuery();
   const [claimEarnings, { loading: claiming }] = useClaimEarningsMutation();
   const [applyReferralCode, { loading: applying }] = useApplyReferralCodeMutation();
 
   const [copySuccess, setCopySuccess] = useState(false);
   const [showApplyCode, setShowApplyCode] = useState(false);
   const [referralCodeInput, setReferralCodeInput] = useState('');
+
+  // Debug logging
+  console.log('🔍 Referral Modal Data:', {
+    referralCodeData,
+    statsData,
+    errorCode,
+    errorStats
+  });
 
   const referralCode = referralCodeData?.referralCode?.code;
   const stats = statsData?.referralStats;
@@ -60,6 +70,10 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
       alert('Failed to claim earnings. Please try again.');
     }
   };
+
+  // Check if user has already applied a referral code
+  // The backend tracks this - users can only apply ONE code ever
+  const hasAppliedReferralCode = statsData?.referralStats?.referralCode !== null;
 
   const handleApplyCode = async () => {
     if (!referralCodeInput.trim()) {
@@ -129,7 +143,7 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
 
             <div className="flex items-center gap-3 mb-4">
               <div className="flex-1 rounded-lg bg-black/30 px-4 py-3 font-mono text-2xl font-bold text-white text-center">
-                {loadingCode ? 'Loading...' : referralCode || 'N/A'}
+                {loadingCode ? 'Loading...' : referralCode || (referralCodeData ? JSON.stringify(referralCodeData) : 'N/A')}
               </div>
               <button
                 onClick={handleCopyCode}
@@ -230,55 +244,85 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
 
           {/* Apply Referral Code Section */}
           <div className="rounded-lg bg-gradient-to-br from-orange-500/10 to-red-500/10 border border-orange-500/30 p-4">
-            {!showApplyCode ? (
-              <button
-                onClick={() => setShowApplyCode(true)}
-                className="w-full flex items-center justify-center gap-2 text-orange-300 hover:text-orange-200 transition"
-              >
-                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
-                </svg>
-                Have a referral code? Apply it here
-              </button>
-            ) : (
+            {hasAppliedReferralCode ? (
+              // Show which code they already used (read-only)
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-semibold text-orange-300">Apply Referral Code</h4>
-                  <button
-                    onClick={() => {
-                      setShowApplyCode(false);
-                      setReferralCodeInput('');
-                    }}
-                    className="text-gray-400 hover:text-white transition"
-                  >
-                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
+                <div className="flex items-center gap-2">
+                  <svg className="h-5 w-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <h4 className="font-semibold text-green-300">Referral Code Applied</h4>
                 </div>
-                <input
-                  type="text"
-                  value={referralCodeInput}
-                  onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
-                  placeholder="Enter 8-character code"
-                  maxLength={8}
-                  className="w-full rounded-lg bg-black/30 border border-orange-500/30 px-4 py-2 font-mono text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
-                />
-                <button
-                  onClick={handleApplyCode}
-                  disabled={applying || referralCodeInput.length !== 8}
-                  className={`w-full rounded-lg px-4 py-2 font-semibold transition ${
-                    referralCodeInput.length === 8 && !applying
-                      ? 'bg-orange-500 text-white hover:bg-orange-600'
-                      : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                  }`}
-                >
-                  {applying ? 'Applying...' : 'Apply Code & Get 10% Off'}
-                </button>
-                <p className="text-xs text-gray-400 text-center">
-                  You can only apply one referral code per account
-                </p>
+                <div className="rounded-lg bg-black/30 px-4 py-3 border border-green-500/30">
+                  <p className="text-xs text-gray-400 mb-1">You joined using code:</p>
+                  <p className="font-mono text-lg font-bold text-white text-center">
+                    {loadingStats ? 'Loading...' : (statsData?.referralStats?.referralCode || 'N/A')}
+                  </p>
+                </div>
+                <div className="flex items-start gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                  <svg className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-green-300">Welcome voucher received!</p>
+                    <p className="text-xs text-green-200/70 mt-1">
+                      You received a 10% discount voucher when you applied this code. Check your active vouchers in checkout!
+                    </p>
+                  </div>
+                </div>
               </div>
+            ) : (
+              // Show apply code form (only if they haven't applied one yet)
+              !showApplyCode ? (
+                <button
+                  onClick={() => setShowApplyCode(true)}
+                  className="w-full flex items-center justify-center gap-2 text-orange-300 hover:text-orange-200 transition"
+                >
+                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+                  </svg>
+                  Have a referral code? Click to apply
+                </button>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-orange-300">Apply Referral Code</h4>
+                    <button
+                      onClick={() => {
+                        setShowApplyCode(false);
+                        setReferralCodeInput('');
+                      }}
+                      className="text-gray-400 hover:text-white transition"
+                    >
+                      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={referralCodeInput}
+                    onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                    placeholder="Enter 8-character code"
+                    maxLength={8}
+                    className="w-full rounded-lg bg-black/30 border border-orange-500/30 px-4 py-2 font-mono text-white placeholder-gray-500 focus:border-orange-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleApplyCode}
+                    disabled={applying || referralCodeInput.length !== 8}
+                    className={`w-full rounded-lg px-4 py-2 font-semibold transition ${
+                      referralCodeInput.length === 8 && !applying
+                        ? 'bg-orange-500 text-white hover:bg-orange-600'
+                        : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {applying ? 'Applying...' : 'Apply Code & Get 10% Off'}
+                  </button>
+                  <p className="text-xs text-gray-400 text-center">
+                    ⚠️ You can only apply one referral code per account
+                  </p>
+                </div>
+              )
             )}
           </div>
 
