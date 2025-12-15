@@ -74,7 +74,7 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const handleShareTwitter = () => {
     const text = `Join me and get 10% off your first purchase! Use referral code: ${referralCode}`;
     const url = `${window.location.origin}/signup?ref=${referralCode}`;
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
+    window.open(`https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank');
   };
 
   const handleClaimEarnings = async () => {

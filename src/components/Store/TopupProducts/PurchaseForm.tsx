@@ -1829,70 +1829,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           </div>
         )}
 
-        {/* Voucher Selection */}
-        {activeVouchers && activeVouchers.length > 0 && (
-          <div className="mb-6 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" />
-              </svg>
-              <h4 className="text-sm font-semibold text-purple-300">Active Vouchers</h4>
-            </div>
-
-            <div className="space-y-2">
-              {/* No voucher option */}
-              <label className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-white/20">
-                <input
-                  type="radio"
-                  name="voucher"
-                  value=""
-                  checked={!selectedVoucherId}
-                  onChange={() => setSelectedVoucherId(null)}
-                  className="w-4 h-4"
-                />
-                <span className="text-sm text-white/70">No voucher</span>
-              </label>
-
-              {/* Available vouchers */}
-              {activeVouchers.map((voucher) => (
-                <label
-                  key={voucher.id}
-                  className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-purple-500/30"
-                >
-                  <input
-                    type="radio"
-                    name="voucher"
-                    value={voucher.id}
-                    checked={selectedVoucherId === voucher.id}
-                    onChange={() => setSelectedVoucherId(voucher.id)}
-                    className="w-4 h-4"
-                  />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-purple-300">
-                        {voucher.discountPercent}% Discount
-                      </span>
-                      {!voucher.used && (
-                        <span className="text-xs bg-green-500/30 text-green-300 px-2 py-0.5 rounded-full">
-                          Unused
-                        </span>
-                      )}
-                      {voucher.used && (
-                        <span className="text-xs bg-gray-500/30 text-gray-300 px-2 py-0.5 rounded-full">
-                          Used
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-white/50 mt-0.5">
-                      Type: {voucher.voucherType || 'Standard'} • Expires: {new Date(voucher.expiresAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* User Input Fields */}
         {userInputFields.length > 0 ? (
           <div className="space-y-3">
@@ -2069,6 +2005,70 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                   </>
                 )}
               </button>
+            )}
+
+            {/* Voucher Selection */}
+            {activeVouchers && activeVouchers.length > 0 && (
+              <div className="mb-6 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" />
+                  </svg>
+                  <h4 className="text-sm font-semibold text-purple-300">Active Vouchers</h4>
+                </div>
+
+                <div className="space-y-2">
+                  {/* No voucher option */}
+                  <label className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-white/20">
+                    <input
+                      type="radio"
+                      name="voucher"
+                      value=""
+                      checked={!selectedVoucherId}
+                      onChange={() => setSelectedVoucherId(null)}
+                      className="w-4 h-4"
+                    />
+                    <span className="text-sm text-white/70">No voucher</span>
+                  </label>
+
+                  {/* Available vouchers */}
+                  {activeVouchers.map((voucher) => (
+                    <label
+                      key={voucher.id}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-purple-500/30"
+                    >
+                      <input
+                        type="radio"
+                        name="voucher"
+                        value={voucher.id}
+                        checked={selectedVoucherId === voucher.id}
+                        onChange={() => setSelectedVoucherId(voucher.id)}
+                        className="w-4 h-4"
+                      />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-purple-300">
+                            {voucher.discountPercent}% Discount
+                          </span>
+                          {!voucher.used && (
+                            <span className="text-xs bg-green-500/30 text-green-300 px-2 py-0.5 rounded-full">
+                              Unused
+                            </span>
+                          )}
+                          {voucher.used && (
+                            <span className="text-xs bg-gray-500/30 text-gray-300 px-2 py-0.5 rounded-full">
+                              Used
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-white/50 mt-0.5">
+                          Type: {voucher.voucherType || 'Standard'} • Expires: {new Date(voucher.expiresAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
 
           </div>

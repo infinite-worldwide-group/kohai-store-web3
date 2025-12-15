@@ -1,6 +1,7 @@
 "use client";
 
 import SupportFab from "@/components/User/Footer/SupportFab";
+import ReferralCodeHandler from "@/components/ReferralCodeHandler";
 import { AffiliateProvider } from "@/contexts/AffiliateContext";
 import { EmailVerificationProvider } from "@/contexts/EmailVerificationContext";
 import { MerchantProvider } from "@/contexts/MerchantContext";
@@ -48,6 +49,7 @@ export default function RootLayout({
                           <main>{children}</main>
                         </div>
                         <SupportFab />
+                        <ReferralCodeHandler />
                       </StoreProvider>
                     </AffiliateProvider>
                   </MerchantProvider>
