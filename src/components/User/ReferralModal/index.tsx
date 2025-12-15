@@ -44,6 +44,21 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const claimedEarnings = stats?.claimedEarnings || 0;
   const totalReferrals = stats?.totalReferrals || 0;
   const recentEarnings = stats?.recentEarnings || [];
+  
+  // The code they applied from someone else (if any)
+  // This should be DIFFERENT from referralCode which is THEIR own code
+  const appliedReferralCode = stats?.appliedCode || stats?.referredBy || null;
+
+  // Check if user has already applied a referral code
+  // The backend tracks this - users can only apply ONE code ever
+  const hasAppliedReferralCode = appliedReferralCode !== null && appliedReferralCode !== undefined;
+
+  // Debug logging
+  console.log('Referral codes:', {
+    yourCode: referralCode,
+    codeYouApplied: appliedReferralCode,
+    stats: stats
+  });
 
   const handleCopyCode = () => {
     if (referralCode) {
@@ -75,13 +90,15 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
     }
   };
 
-  // Check if user has already applied a referral code
-  // The backend tracks this - users can only apply ONE code ever
-  const hasAppliedReferralCode = statsData?.referralStats?.referralCode !== null;
-
   const handleApplyCode = async () => {
     if (!referralCodeInput.trim()) {
       alert('Please enter a referral code');
+      return;
+    }
+
+    // Prevent applying own code
+    if (referralCodeInput.toUpperCase() === referralCode?.toUpperCase()) {
+      alert('You cannot apply your own referral code');
       return;
     }
 
@@ -260,10 +277,7 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
                 <div className="rounded-lg bg-black/30 px-4 py-3 border border-green-500/30">
                   <p className="text-xs text-gray-400 mb-1">You joined using code:</p>
                   <p className="font-mono text-lg font-bold text-white text-center">
-                    {loadingStats ? 'Loading...' : 'S5BHSAVE'}
-                  </p>
-                  <p className="text-xs text-red-400 mt-2">
-                    DEBUG: Check console for data structure
+                    {loadingStats ? 'Loading...' : appliedReferralCode || 'N/A'}
                   </p>
                 </div>
                 <div className="flex items-start gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">

@@ -69,16 +69,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const confirmResolveRef = useRef<((value: boolean) => void) | null>(null);
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
   const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
-  const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
 
   // Check if user is authenticated (has JWT token)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-  // Fetch active vouchers
-  const { data: vouchersData, loading: loadingVouchers } = useGetActiveVouchersQuery({
-    skip: !isConnected || !isAuthenticated,
-    fetchPolicy: 'cache-and-network',
-  });
   
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -86,6 +79,15 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setIsAuthenticated(hasToken);
     }
   }, [isConnected, address]);
+
+  // Fetch user's active vouchers
+  const { data: vouchersData } = useGetActiveVouchersQuery({
+    skip: !isConnected || !isAuthenticated,
+    fetchPolicy: 'cache-and-network',
+  });
+
+  const activeVouchers = vouchersData?.activeVouchers || [];
+  const [selectedVoucherId, setSelectedVoucherId] = useState<string | null>(null);
 
   // Fetch ALL saved game accounts for the user (not filtered by product)
   const { data: gameAccountsData, refetch: refetchGameAccounts, loading: loadingGameAccounts } = useMyGameAccountsQuery({
@@ -480,11 +482,37 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     return converted || productPriceUsd;
   }, [productPriceUsd, selectedCurrency.code, convertPrice]);
 
+  // Get selected voucher details
+  const selectedVoucher = selectedVoucherId
+    ? activeVouchers.find((v: any) => v.id === selectedVoucherId)
+    : null;
+
+  // Calculate discount - user CHOOSES between voucher OR tier discount
+  // If voucher is selected → use voucher discount
+  // If no voucher selected → use tier discount
+  const voucherDiscountPercent = selectedVoucher?.discountPercent || 0;
+  const totalDiscountPercent = selectedVoucherId ? voucherDiscountPercent : userDiscountPercent;
+
+  // Which discount is being applied
+  const isUsingVoucher = selectedVoucherId && voucherDiscountPercent > 0;
+  const isUsingTierDiscount = !selectedVoucherId && userDiscountPercent > 0;
+
+  // Debug logging
+  if (typeof window !== 'undefined') {
+    console.log('=== DISCOUNT DEBUG ===');
+    console.log('selectedVoucherId:', selectedVoucherId);
+    console.log('voucherDiscountPercent:', voucherDiscountPercent);
+    console.log('userDiscountPercent (tier):', userDiscountPercent);
+    console.log('totalDiscountPercent (final):', totalDiscountPercent);
+    console.log('isUsingVoucher:', isUsingVoucher);
+    console.log('isUsingTierDiscount:', isUsingTierDiscount);
+  }
+
   // Calculate discounted prices
-  const discountAmount = (convertedPrice * userDiscountPercent) / 100;
+  const discountAmount = (convertedPrice * totalDiscountPercent) / 100;
   const discountedPrice = convertedPrice - discountAmount;
-  const discountedPriceUsd = productPriceUsd - ((productPriceUsd * userDiscountPercent) / 100);
-  const hasDiscount = userDiscountPercent > 0;
+  const discountedPriceUsd = productPriceUsd - ((productPriceUsd * totalDiscountPercent) / 100);
+  const hasDiscount = totalDiscountPercent > 0;
 
   // Check if account exists in saved accounts (no auto-save)
   const checkAccountExists = useCallback(async (data: Record<string, string>) => {
@@ -1078,7 +1106,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             userData: Object.keys(userData).length > 0 ? userData : undefined,
             cryptoCurrency: 'USDT',
             cryptoAmount: paymentAmount,
-            voucherId: selectedVoucherId || undefined,
           },
         });
 
@@ -1363,7 +1390,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           userData: Object.keys(userData).length > 0 ? userData : undefined,
           cryptoCurrency: 'USDT',
           cryptoAmount: finalPaymentAmount,
-          voucherId: selectedVoucherId || undefined,
         },
       });
 
@@ -1560,17 +1586,33 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     {formatPrice(discountedPrice, selectedCurrency)}
                   </p>
                 </div>
-                <span style={{
-                  fontSize: '0.75em',
-                  background: '#00C853',
-                  color: 'white',
-                  padding: '2px 8px',
-                  borderRadius: '4px',
-                  display: 'inline-block',
-                  marginTop: '4px'
-                }}>
-                  -{userDiscountPercent}% VIP Discount
-                </span>
+                <div className="flex gap-2 flex-wrap mt-2 justify-end">
+                  {selectedVoucherId && voucherDiscountPercent > 0 ? (
+                    // Show ONLY voucher discount if voucher is selected
+                    <span style={{
+                      fontSize: '0.75em',
+                      background: '#9C27B0',
+                      color: 'white',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      display: 'inline-block'
+                    }}>
+                      {voucherDiscountPercent}% Voucher Discount
+                    </span>
+                  ) : userDiscountPercent > 0 ? (
+                    // Show ONLY tier discount if no voucher selected but user has tier
+                    <span style={{
+                      fontSize: '0.75em',
+                      background: '#00C853',
+                      color: 'white',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      display: 'inline-block'
+                    }}>
+                      {userDiscountPercent}% VIP Tier Discount
+                    </span>
+                  ) : null}
+                </div>
               </div>
             ) : (
               <p className="text-2xl font-bold">
@@ -1602,88 +1644,6 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           </div>
         </div>
       </div>
-
-      {/* Voucher Selector */}
-      {isConnected && vouchersData?.activeVouchers && vouchersData.activeVouchers.length > 0 && (
-        <div className="mb-6 rounded-lg bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/30 p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M4 3a2 2 0 100 4h12a2 2 0 100-4H4z"/>
-              <path fillRule="evenodd" d="M3 8h14v7a2 2 0 01-2 2H5a2 2 0 01-2-2V8zm5 3a1 1 0 011-1h2a1 1 0 110 2H9a1 1 0 01-1-1z" clipRule="evenodd"/>
-            </svg>
-            <h4 className="font-semibold text-purple-300">Apply Voucher</h4>
-          </div>
-
-          {loadingVouchers ? (
-            <p className="text-sm text-gray-400">Loading vouchers...</p>
-          ) : (
-            <div className="space-y-2">
-              {/* No Voucher Option */}
-              <button
-                onClick={() => setSelectedVoucherId(null)}
-                className={`w-full text-left rounded-lg p-3 transition ${
-                  selectedVoucherId === null
-                    ? 'bg-white/20 border-2 border-purple-400'
-                    : 'bg-white/5 border border-white/10 hover:bg-white/10'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">No voucher</span>
-                  {selectedVoucherId === null && (
-                    <svg className="h-5 w-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-              </button>
-
-              {/* Voucher Options */}
-              {vouchersData.activeVouchers.map((voucher: any) => {
-                const isExpiringSoon = voucher.expiresAt && new Date(voucher.expiresAt) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-                return (
-                  <button
-                    key={voucher.id}
-                    onClick={() => setSelectedVoucherId(voucher.id)}
-                    className={`w-full text-left rounded-lg p-3 transition ${
-                      selectedVoucherId === voucher.id
-                        ? 'bg-white/20 border-2 border-purple-400'
-                        : 'bg-white/5 border border-white/10 hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-bold text-purple-300">
-                            -{voucher.discountPercent}%
-                          </span>
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
-                            {voucher.voucherType.replace(/_/g, ' ')}
-                          </span>
-                          {isExpiringSoon && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300">
-                              Expiring soon!
-                            </span>
-                          )}
-                        </div>
-                        {voucher.expiresAt && (
-                          <p className="text-xs text-gray-400 mt-1">
-                            Expires: {new Date(voucher.expiresAt).toLocaleDateString()}
-                          </p>
-                        )}
-                      </div>
-                      {selectedVoucherId === voucher.id && (
-                        <svg className="h-5 w-5 text-purple-400 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* USDT Balance Display */}
       {isConnected && (
@@ -1843,6 +1803,70 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     </button>
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Voucher Selection */}
+        {activeVouchers && activeVouchers.length > 0 && (
+          <div className="mb-6 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" />
+              </svg>
+              <h4 className="text-sm font-semibold text-purple-300">Active Vouchers</h4>
+            </div>
+
+            <div className="space-y-2">
+              {/* No voucher option */}
+              <label className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-white/20">
+                <input
+                  type="radio"
+                  name="voucher"
+                  value=""
+                  checked={!selectedVoucherId}
+                  onChange={() => setSelectedVoucherId(null)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm text-white/70">No voucher</span>
+              </label>
+
+              {/* Available vouchers */}
+              {activeVouchers.map((voucher) => (
+                <label
+                  key={voucher.id}
+                  className="flex items-center gap-3 p-3 rounded-lg bg-white/5 hover:bg-white/10 transition cursor-pointer border border-transparent hover:border-purple-500/30"
+                >
+                  <input
+                    type="radio"
+                    name="voucher"
+                    value={voucher.id}
+                    checked={selectedVoucherId === voucher.id}
+                    onChange={() => setSelectedVoucherId(voucher.id)}
+                    className="w-4 h-4"
+                  />
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-purple-300">
+                        {voucher.discountPercent}% Discount
+                      </span>
+                      {!voucher.used && (
+                        <span className="text-xs bg-green-500/30 text-green-300 px-2 py-0.5 rounded-full">
+                          Unused
+                        </span>
+                      )}
+                      {voucher.used && (
+                        <span className="text-xs bg-gray-500/30 text-gray-300 px-2 py-0.5 rounded-full">
+                          Used
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-white/50 mt-0.5">
+                      Type: {voucher.voucherType || 'Standard'} • Expires: {new Date(voucher.expiresAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                </label>
               ))}
             </div>
           </div>
@@ -2117,24 +2141,24 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     )}
                   </div>
                 </div>
-                {hasDiscount && (
+                {(selectedVoucherId && voucherDiscountPercent > 0) || userDiscountPercent > 0 ? (
                   <div className="flex justify-between items-center mb-1">
                     <span></span>
                     <span style={{
                       fontSize: '0.65em',
-                      background: '#00C853',
+                      background: selectedVoucherId && voucherDiscountPercent > 0 ? '#9C27B0' : '#00C853',
                       color: 'white',
                       padding: '2px 6px',
                       borderRadius: '4px'
                     }}>
-                      -{userDiscountPercent}% VIP Discount
+                      -{selectedVoucherId && voucherDiscountPercent > 0 ? voucherDiscountPercent : userDiscountPercent}% {selectedVoucherId && voucherDiscountPercent > 0 ? 'Voucher' : 'VIP'} Discount
                     </span>
                   </div>
-                )}
+                ) : null}
                 <div className="flex justify-between items-center">
                   <span className="text-sm opacity-70">You will pay:</span>
                   <div className="text-right">
-                    {hasDiscount ? (
+                    {(selectedVoucherId && voucherDiscountPercent > 0) || userDiscountPercent > 0 ? (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <span style={{ textDecoration: 'line-through', opacity: 0.6, fontSize: '0.9em' }}>
                           {productPriceUsd.toFixed(2)} USDT
