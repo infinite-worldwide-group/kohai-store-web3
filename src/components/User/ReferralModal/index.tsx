@@ -7,6 +7,7 @@ import {
   useClaimEarningsMutation,
   useApplyReferralCodeMutation,
   useGetActiveVouchersQuery,
+  useCurrentUserQuery,
 } from 'graphql/generated/graphql';
 
 interface ReferralModalProps {
@@ -15,6 +16,7 @@ interface ReferralModalProps {
 }
 
 const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
+  const { data: currentUserData } = useCurrentUserQuery();
   const { data: referralCodeData, loading: loadingCode, error: errorCode } = useGetReferralCodeQuery({
     skip: !isOpen,
   });
@@ -39,6 +41,7 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
     errorStats
   });
 
+  const user = currentUserData?.currentUser;
   const referralCode = referralCodeData?.referralCode?.code;
   const stats = statsData?.referralStats;
   const claimableEarnings = stats?.claimableEarnings || 0;
@@ -47,29 +50,17 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
   const totalReferrals = stats?.totalReferrals || 0;
   const recentEarnings = stats?.recentEarnings || [];
 
-  // Check if user has already applied a referral code by checking for referral welcome voucher
-  // When user applies a referral code, they get a "referral_welcome" voucher
-  const activeVouchers = vouchersData?.activeVouchers || [];
-  const hasReferralVoucher = activeVouchers.some((v: any) =>
-    v.voucherType === 'referral_welcome' || v.voucherType?.toLowerCase().includes('referral')
-  );
-
-  // The code they applied (if any)
-  // Note: Backend needs to provide this field - for now we just know they applied SOME code
-  const appliedReferralCode = hasReferralVoucher ? 'XXXXXXXX' : null;
-
-  // Check if user has already applied a referral code
-  const hasAppliedReferralCode = hasReferralVoucher;
+  // Get the referral code the user applied (from backend User fields)
+  const appliedReferralCode = user?.appliedReferralCode || null;
+  const hasAppliedReferralCode = !!user?.referredById || !!appliedReferralCode;
 
   // Debug logging
   console.log('🔍 Referral Modal Debug:', {
     yourCode: referralCode,
     codeYouApplied: appliedReferralCode,
     hasAppliedReferralCode: hasAppliedReferralCode,
-    hasReferralVoucher: hasReferralVoucher,
-    activeVouchers: activeVouchers,
-    fullStatsObject: stats,
-    statsKeys: stats ? Object.keys(stats) : 'no stats'
+    userReferredById: user?.referredById,
+    fullStatsObject: stats
   });
 
   const handleCopyCode = () => {
@@ -288,24 +279,9 @@ const ReferralModal = ({ isOpen, onClose }: ReferralModalProps) => {
                 </div>
                 <div className="rounded-lg bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-2 border-green-500/30 px-4 py-3">
                   <p className="text-xs text-green-300 mb-2 text-center font-semibold">Referral Code Used</p>
-                  {loadingStats ? (
-                    <p className="font-mono text-2xl font-bold text-white text-center tracking-wider">
-                      Loading...
-                    </p>
-                  ) : appliedReferralCode === 'XXXXXXXX' ? (
-                    <div className="text-center">
-                      <p className="font-mono text-2xl font-bold text-yellow-300 tracking-wider">
-                        ✓ REDEEMED
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        Backend needs to add field to show which code
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="font-mono text-2xl font-bold text-white text-center tracking-wider">
-                      {appliedReferralCode || 'N/A'}
-                    </p>
-                  )}
+                  <p className="font-mono text-2xl font-bold text-white text-center tracking-wider">
+                    {appliedReferralCode || 'Loading...'}
+                  </p>
                 </div>
                 <div className="flex items-start gap-2 bg-green-500/10 border border-green-500/30 rounded-lg p-3">
                   <svg className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">

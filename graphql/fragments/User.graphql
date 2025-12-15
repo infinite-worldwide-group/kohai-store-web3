@@ -13,4 +13,8 @@ fragment UserSession on User {
   kohaiBalance
   tierBadge
   tierStyle
+
+  # Referral fields
+  appliedReferralCode
+  referredById
 }

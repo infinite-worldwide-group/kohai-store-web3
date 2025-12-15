@@ -659,15 +659,23 @@ export type UpdateTierPayload = {
 
 export type User = {
   __typename?: 'User';
+  /** The referral code this user applied (if any) */
+  appliedReferralCode?: Maybe<Scalars['String']['output']>;
   createdAt: Scalars['ISO8601DateTime']['output'];
   /** Current discount percentage */
   discountPercent: Scalars['Int']['output'];
   email?: Maybe<Scalars['String']['output']>;
   emailVerified: Scalars['Boolean']['output'];
   emailVerifiedAt?: Maybe<Scalars['ISO8601DateTime']['output']>;
+  /** Whether user has applied a referral code */
+  hasAppliedReferralCode: Scalars['Boolean']['output'];
   id: Scalars['ID']['output'];
   /** Current $KOHAI token balance */
   kohaiBalance?: Maybe<Scalars['Float']['output']>;
+  /** When the referral code was applied */
+  referralAppliedAt?: Maybe<Scalars['ISO8601DateTime']['output']>;
+  /** ID of the user who referred them */
+  referredById?: Maybe<Scalars['ID']['output']>;
   /** Current VIP tier (elite, grandmaster, legend) */
   tier?: Maybe<Scalars['String']['output']>;
   /** Badge display name */
@@ -726,7 +734,7 @@ export type TopupProductListFragment = { __typename?: 'TopupProduct', id: string
 
 export type TopupProductItemFragment = { __typename?: 'TopupProductItem', id: string, name?: string | null, displayName: string, icon?: string | null, price?: number | null, currency: string, formattedPrice: string, active: boolean, originId?: string | null, topupProductId: string };
 
-export type UserSessionFragment = { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null };
+export type UserSessionFragment = { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null, appliedReferralCode?: string | null, referredById?: string | null };
 
 export type ApplyReferralCodeMutationVariables = Exact<{
   code: Scalars['String']['input'];
@@ -742,7 +750,7 @@ export type AuthenticateWalletMutationVariables = Exact<{
 }>;
 
 
-export type AuthenticateWalletMutation = { __typename?: 'Mutation', authenticateWallet?: { __typename?: 'AuthenticateWalletPayload', token?: string | null, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null } | null };
+export type AuthenticateWalletMutation = { __typename?: 'Mutation', authenticateWallet?: { __typename?: 'AuthenticateWalletPayload', token?: string | null, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null, appliedReferralCode?: string | null, referredById?: string | null } | null } | null };
 
 export type ClaimEarningsMutationVariables = Exact<{ [key: string]: never; }>;
 
@@ -804,7 +812,7 @@ export type VerifyEmailMutationVariables = Exact<{
 }>;
 
 
-export type VerifyEmailMutation = { __typename?: 'Mutation', verifyEmail?: { __typename?: 'VerifyEmailPayload', success: boolean, message: string, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null } | null };
+export type VerifyEmailMutation = { __typename?: 'Mutation', verifyEmail?: { __typename?: 'VerifyEmailPayload', success: boolean, message: string, errors: Array<string>, user?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null, appliedReferralCode?: string | null, referredById?: string | null } | null } | null };
 
 export type GetActiveVouchersQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -814,7 +822,7 @@ export type GetActiveVouchersQuery = { __typename?: 'Query', activeVouchers: Arr
 export type CurrentUserQueryVariables = Exact<{ [key: string]: never; }>;
 
 
-export type CurrentUserQuery = { __typename?: 'Query', currentUser?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null } | null };
+export type CurrentUserQuery = { __typename?: 'Query', currentUser?: { __typename?: 'User', id: string, email?: string | null, emailVerified: boolean, emailVerifiedAt?: any | null, updatedAt: any, walletAddress: string, tier?: string | null, tierName?: string | null, discountPercent: number, kohaiBalance?: number | null, tierBadge?: string | null, tierStyle?: string | null, appliedReferralCode?: string | null, referredById?: string | null } | null };
 
 export type MyGameAccountsQueryVariables = Exact<{
   topupProductId?: InputMaybe<Scalars['Int']['input']>;
@@ -1012,6 +1020,8 @@ export const UserSessionFragmentDoc = gql`
   kohaiBalance
   tierBadge
   tierStyle
+  appliedReferralCode
+  referredById
 }
     `;
 export const ApplyReferralCodeDocument = gql`
