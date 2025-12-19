@@ -2,6 +2,7 @@
 
 import SupportFab from "@/components/User/Footer/SupportFab";
 import ReferralCodeHandler from "@/components/ReferralCodeHandler";
+import NotificationHandler from "@/components/NotificationHandler";
 import { AffiliateProvider } from "@/contexts/AffiliateContext";
 import { EmailVerificationProvider } from "@/contexts/EmailVerificationContext";
 import { MerchantProvider } from "@/contexts/MerchantContext";
@@ -38,9 +39,9 @@ export default function RootLayout({
         <FacebookPixel />
         <GoogleAnalytics />
         <CustomApolloProvider>
-          <WalletProvider>
-            <CurrencyProvider>
-              <UserProvider>
+          <UserProvider>
+            <WalletProvider>
+              <CurrencyProvider>
                 <EmailVerificationProvider>
                   <MerchantProvider>
                     <AffiliateProvider>
@@ -50,13 +51,14 @@ export default function RootLayout({
                         </div>
                         <SupportFab />
                         <ReferralCodeHandler />
+                        <NotificationHandler />
                       </StoreProvider>
                     </AffiliateProvider>
                   </MerchantProvider>
                 </EmailVerificationProvider>
-              </UserProvider>
-            </CurrencyProvider>
-          </WalletProvider>
+              </CurrencyProvider>
+            </WalletProvider>
+          </UserProvider>
         </CustomApolloProvider>
       </body>
     </html>

@@ -6,14 +6,21 @@ import PremiumListItem from "@/components/Premium/TopupProducts/ListItem";
 import { useStore } from "@/contexts/StoreContext";
 import { useTopupProductsQuery, TopupProductFragment } from "graphql/generated/graphql";
 import { parseProductTitle } from "@/utils/productGrouping";
+import { filterProductsByCategory } from "@/utils/productCategorization";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import TopupProductListItem from "./ListItem";
 import RegionSelectorModal from "./RegionSelectorModal";
+import CategoryDisplay from "./CategoryDisplay";
+import { useFavorites } from "@/hooks/useFavorites";
+
+type PlatformType = "mobile" | "pc" | "console";
+type CategoryType = "others" | "favourite" | "popular" | "new_release" | "trending";
 
 const TopupProducts = (props: { from?: string; slug?: string }) => {
   const { store } = useStore();
   const router = useRouter();
+  const { isFavorite, favorites } = useFavorites();
 
   const [page, setPage] = useState(1);
   const searchParams = useSearchParams();
@@ -31,9 +38,19 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     searchParams.get("genre"),
   );
 
+  const [selectedPlatform, setSelectedPlatform] = useState<PlatformType | undefined>();
+
+  // Show category view only when no specific category is selected
+  const showCategoryView = !categoryId;
+
   // Modal state
   const [selectedGame, setSelectedGame] = useState<TopupProductFragment | null>(null);
   const [showRegionModal, setShowRegionModal] = useState(false);
+
+  // Log whenever favorites change
+  useEffect(() => {
+    console.log('📝 TopupProducts: favorites changed:', favorites, 'Count:', favorites.length);
+  }, [favorites]);
 
   const { data, loading, error, refetch } = useTopupProductsQuery({
     variables: {
@@ -55,13 +72,70 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     },
   });
 
-  // Filter products by selected category (client-side)
-  const filteredProducts = data?.topupProducts?.filter(product => {
-    if (!categoryId) return true; // Show all if no category selected
-    return product.category === categoryId;
-  }) || [];
+  // Deduplicate ALL products first (for category view)
+  // Count regions per game across all products
+  const allRegionCountMap = new Map<string, number>();
+  (data?.topupProducts || []).forEach(product => {
+    const { gameName } = parseProductTitle(product.title);
+    allRegionCountMap.set(gameName, (allRegionCountMap.get(gameName) || 0) + 1);
+  });
 
-  // Group products by game name and deduplicate
+  // Deduplicate all products
+  const allDedupedProducts = Array.from(
+    (data?.topupProducts || []).reduce((map, product) => {
+      const { gameName, regionCode } = parseProductTitle(product.title);
+
+      if (!map.has(gameName)) {
+        const regionCount = allRegionCountMap.get(gameName) || 0;
+        const displayProduct = { ...product } as TopupProductFragment;
+
+        if (regionCount > 1) {
+          displayProduct.title = gameName;
+        }
+
+        map.set(gameName, displayProduct);
+      } else {
+        const current = map.get(gameName)!;
+        const currentRegion = parseProductTitle(current.title).regionCode;
+        if (regionCode < currentRegion) {
+          const regionCount = allRegionCountMap.get(gameName) || 0;
+          const displayProduct = { ...product } as TopupProductFragment;
+
+          if (regionCount > 1) {
+            displayProduct.title = gameName;
+          }
+
+          map.set(gameName, displayProduct);
+        }
+      }
+      return map;
+    }, new Map<string, TopupProductFragment>()).values()
+  );
+
+  // Filter products by selected category and platform using smart categorization logic
+  console.log('📊 TopupProducts - Filtering:', {
+    categoryId,
+    selectedPlatform,
+    favorites,
+    favoritesCount: favorites.length,
+    totalProducts: data?.topupProducts?.length,
+    showCategoryView: !categoryId
+  });
+
+  const filteredProducts = filterProductsByCategory(
+    data?.topupProducts || [],
+    (categoryId as CategoryType) || null,
+    selectedPlatform,
+    favorites // Pass favorites list for "favourite" category
+  );
+
+  console.log('✅ Filtered products result:', {
+    categoryId,
+    filteredCount: filteredProducts.length,
+    sampleProducts: filteredProducts.slice(0, 3).map(p => ({ id: p.id, title: p.title }))
+  });
+
+  // Group products by game name and deduplicate (for grid view)
   // First, count regions per game
   const regionCountMap = new Map<string, number>();
   filteredProducts.forEach(product => {
@@ -70,7 +144,7 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
   });
 
   // Then group products, modifying title based on region count
-  const groupedProducts = Array.from(
+  const dedupedProducts = Array.from(
     filteredProducts.reduce((map, product) => {
       const { gameName, regionCode } = parseProductTitle(product.title);
 
@@ -105,6 +179,15 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
       return map;
     }, new Map<string, TopupProductFragment>()).values()
   );
+
+  // Sort products: favorites first, then others
+  const groupedProducts = (dedupedProducts as TopupProductFragment[]).sort((a, b) => {
+    const aIsFav = isFavorite(a.id);
+    const bIsFav = isFavorite(b.id);
+    if (aIsFav && !bIsFav) return -1;
+    if (!aIsFav && bIsFav) return 1;
+    return 0;
+  });
 
   // Debug logging
   console.log("TopupProducts Debug:", {
@@ -158,8 +241,9 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     const { gameName } = parseProductTitle(game.title);
 
     // Get unique regions by grouping - this ensures we only count distinct region codes
+    // Use ALL products, not filtered ones, to find all available regions
     const regionMap = new Map<string, any>();
-    filteredProducts
+    (data?.topupProducts || [])
       .filter(p => parseProductTitle(p.title).gameName === gameName)
       .forEach(p => {
         const { regionCode } = parseProductTitle(p.title);
@@ -184,7 +268,7 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
       setSelectedGame(game);
       setShowRegionModal(true);
     }
-  }, [filteredProducts, handleRegionSelect]);
+  }, [data?.topupProducts, handleRegionSelect]);
 
   // Set up activity listeners
   useEffect(() => {
@@ -230,7 +314,9 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
         <FilterPremium
           categoryId={categoryId}
           setCategoryId={setCategoryId}
+          onPlatformChange={setSelectedPlatform}
           products={data?.topupProducts}
+          favouriteIds={favorites}
         />
       </div>
 
@@ -268,36 +354,57 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
       )}
 
       {data?.topupProducts && (
-        <div className="grid grid-cols-3 gap-2 md:grid-cols-4 md:gap-4">
-          {groupedProducts.length === 0 ? (
-            <p className="col-span-full text-center opacity-60">
-              No products found {categoryId && `in category: ${categoryId.replace("_", " ")}`}
-            </p>
+        <>
+          {/* Show all categories view by default */}
+          {showCategoryView ? (
+            <CategoryDisplay
+              key={JSON.stringify(favorites)}
+              products={allDedupedProducts}
+              loading={loading}
+              favouriteIds={favorites}
+              isPremium={store?.isPremium}
+              from={props.from}
+              slug={props.slug}
+              selectedPlatform={selectedPlatform}
+              onItemClick={handleGameClick}
+            />
           ) : (
-            groupedProducts.map((item, index) => {
-              if (store?.isPremium) {
-                return (
-                  <PremiumListItem
-                    item={item}
-                    key={`topup-products-${index}`}
-                    from={props.from}
-                    slug={props.slug}
-                  />
-                );
-              } else {
-                return (
-                  <TopupProductListItem
-                    item={item}
-                    key={`topup-products-${index}`}
-                    from={props.from}
-                    slug={props.slug}
-                    onItemClick={handleGameClick}
-                  />
-                );
-              }
-            })
+            // Fallback to grid view if user filters by specific category
+            <div className="grid grid-cols-3 gap-2 md:grid-cols-5 lg:grid-cols-5 md:gap-4">
+              {groupedProducts.length === 0 ? (
+                <p className="col-span-full text-center opacity-60">
+                  No products found {categoryId && `in category: ${categoryId.replace("_", " ")}`}
+                </p>
+              ) : (
+                groupedProducts.map((item, index) => {
+                  if (store?.isPremium) {
+                    return (
+                      <PremiumListItem
+                        item={item}
+                        key={`topup-products-${index}`}
+                        from={props.from}
+                        slug={props.slug}
+                        onItemClick={handleGameClick}
+                        showPlatform={!selectedPlatform}
+                      />
+                    );
+                  } else {
+                    return (
+                      <TopupProductListItem
+                        item={item}
+                        key={`topup-products-${index}`}
+                        from={props.from}
+                        slug={props.slug}
+                        onItemClick={handleGameClick}
+                        showPlatform={!selectedPlatform}
+                      />
+                    );
+                  }
+                })
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
 
       {/* Region Selector Modal */}

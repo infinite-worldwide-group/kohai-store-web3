@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, ReactNode, useContext, useEffect, useState, useRef } from "react";
-import { useAppKit, useAppKitAccount, useAppKitProvider } from '@reown/appkit/react';
+import { createContext, ReactNode, useContext, useEffect, useState, useRef, useMemo } from "react";
+import { useAppKit, useAppKitAccount, useAppKitProvider, useAppKitState } from '@reown/appkit/react';
 import type { Provider } from '@reown/appkit-adapter-solana/react';
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import {
@@ -11,10 +11,11 @@ import {
   getAccount,
   TokenAccountNotFoundError
 } from '@solana/spl-token';
-import { useAuthenticateWalletMutation } from "graphql/generated/graphql";
+import { useAuthenticateWalletMutation, useCurrentUserQuery } from "graphql/generated/graphql";
 import { modal } from '@/lib/reown-config';
 import { clearApolloCache } from '@/lib/apollo-client';
 import { getTokenMintAddress, getNetworkFromRPC, isNativeSOL, getTokenConfig } from '@/lib/tokens';
+import { useUser } from '@/contexts/UserContext';
 
 interface WalletContextType {
   // Connection state
@@ -49,19 +50,123 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined);
 export function WalletProvider({ children }: { children: ReactNode }) {
   const appKit = useAppKit();
   const { open, close } = appKit;
-  const { address: appKitAddress, isConnected: appKitIsConnected } = useAppKitAccount();
+  const { address: appKitAddress, isConnected: appKitIsConnected, caipAddress, status, embeddedWalletInfo } = useAppKitAccount();
   const { walletProvider } = useAppKitProvider<Provider>('solana');
+  const appKitState = useAppKitState();
+  const { setUser } = useUser();
 
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [authenticateWallet] = useAuthenticateWalletMutation();
+
+  // Automatically fetch current user when connected and has JWT token
+  const hasJwtToken = typeof window !== 'undefined' && !!window.localStorage.getItem('jwtToken');
+  const { data: currentUserData, refetch: refetchCurrentUser } = useCurrentUserQuery({
+    skip: !appKitIsConnected || !hasJwtToken,
+    fetchPolicy: 'network-only',
+  });
+
   const [authError, setAuthError] = useState<string | null>(null);
+
+  // Extract email from embeddedWalletInfo to prevent infinite loop
+  // Only extract the email value, not the entire object reference
+  const socialEmail = useMemo(() => {
+    return embeddedWalletInfo?.user?.email || null;
+  }, [embeddedWalletInfo?.user?.email]);
+
+  // Update user context when currentUser query returns data
+  useEffect(() => {
+    if (currentUserData?.currentUser) {
+      console.log('✅ Current user data fetched, updating user context');
+      console.log('📧 User email:', currentUserData.currentUser.email);
+      console.log('✅ Email verified:', currentUserData.currentUser.emailVerified);
+      setUser(currentUserData.currentUser);
+    }
+  }, [currentUserData, setUser]);
+
+  // 🔍 DEBUG: Log connection state changes IMMEDIATELY
+  useEffect(() => {
+    console.log('🔍 Connection State Change:', {
+      isConnected: appKitIsConnected,
+      address: appKitAddress,
+      status: status
+    });
+  }, [appKitIsConnected, appKitAddress, status]);
+
+  // 🔍 DEBUG: Log Reown/AppKit data to check if email is provided
+  useEffect(() => {
+    console.log('🔍 Debug Effect Running - Checking conditions...');
+    console.log('   isConnected:', appKitIsConnected);
+    console.log('   hasAddress:', !!appKitAddress);
+
+    if (appKitIsConnected && appKitAddress) {
+      console.log('========================================');
+      console.log('🔍 REOWN/APPKIT DEBUG - Connection Data');
+      console.log('========================================');
+      console.log('📍 Address:', appKitAddress);
+      console.log('📍 CAIP Address:', caipAddress);
+      console.log('📍 Connection Status:', status);
+      console.log('📍 Is Connected:', appKitIsConnected);
+
+      console.log('\n🔍 AppKit State:', appKitState);
+
+      console.log('\n🔍 Wallet Provider:', walletProvider);
+
+      // Check for email in various possible locations
+      console.log('\n🔍 Checking for email in AppKit data...');
+
+      // Check localStorage for AppKit auth data
+      if (typeof window !== 'undefined') {
+        const allStorage: Record<string, any> = {};
+
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && (key.includes('@w3m') || key.includes('reown') || key.includes('appkit'))) {
+            try {
+              const value = window.localStorage.getItem(key);
+              allStorage[key] = value ? JSON.parse(value) : value;
+            } catch {
+              allStorage[key] = window.localStorage.getItem(key);
+            }
+          }
+        }
+
+        console.log('🔍 AppKit LocalStorage Data:', allStorage);
+
+        // Look for email in the data
+        let foundEmail = null;
+        for (const [key, value] of Object.entries(allStorage)) {
+          if (typeof value === 'object' && value !== null) {
+            if (value.email) {
+              foundEmail = value.email;
+              console.log(`✅ Found email in ${key}:`, foundEmail);
+            }
+            if (value.user?.email) {
+              foundEmail = value.user.email;
+              console.log(`✅ Found email in ${key}.user:`, foundEmail);
+            }
+            if (value.profile?.email) {
+              foundEmail = value.profile.email;
+              console.log(`✅ Found email in ${key}.profile:`, foundEmail);
+            }
+          }
+        }
+
+        if (!foundEmail) {
+          console.log('⚠️ No email found in AppKit storage');
+          console.log('💡 This means either:');
+          console.log('   1. User connected with wallet app (Phantom/Solflare) - no email provided');
+          console.log('   2. User connected with Reown social login but email not available');
+          console.log('   3. Reown social login features need to be enabled in dashboard');
+        }
+      }
+
+      console.log('========================================\n');
+    }
+  }, [appKitIsConnected, appKitAddress, caipAddress, status, appKitState, walletProvider]);
 
   // Track previous address to detect wallet switches
   const previousAddressRef = useRef<string | undefined>(undefined);
-  const [forceUpdate, setForceUpdate] = useState(0);
-
-  // Track the actual extension address (may differ from AppKit)
   const [extensionAddress, setExtensionAddress] = useState<string | undefined>(undefined);
 
   // Track connection timeout
@@ -184,9 +289,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         window.localStorage.removeItem('jwtToken');
       }
 
-      // Force re-authentication with correct address
-      setForceUpdate(prev => prev + 1);
-
       // Clear Apollo cache
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('clear-apollo-cache'));
@@ -308,10 +410,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Clear extension address override
       setExtensionAddress(undefined);
 
-      // Clear JWT token immediately
+      // Clear JWT token and user data immediately
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem('jwtToken');
       }
+
+      // Clear user context
+      setUser(null);
 
       // Use AppKit's official disconnect method for Solana namespace
       await modal.disconnect();
@@ -456,7 +561,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       // Suppress ALL console errors during wallet provider calls to prevent empty {} errors
       const originalError = console.error;
-      const suppressWalletErrors = (...args: any[]) => {
+      const suppressWalletErrors = (..._args: any[]) => {
         // Suppress all errors during wallet operations
         // Wallet providers often throw empty {} objects that clutter the console
         return;
@@ -668,7 +773,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
 
       // Suppress ALL console errors during wallet provider calls to prevent empty {} errors
       const originalError = console.error;
-      const suppressWalletErrors = (...args: any[]) => {
+      const suppressWalletErrors = (..._args: any[]) => {
         // Suppress all errors during wallet operations
         // Wallet providers often throw empty {} objects that clutter the console
         return;
@@ -917,9 +1022,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           window.localStorage.removeItem('jwtToken');
           console.log('Cleared old JWT token for extension wallet switch');
 
-          // Force re-render to trigger re-authentication
-          setForceUpdate(prev => prev + 1);
-
           // Delay the wallet-switched event to allow authentication to start
           setTimeout(() => {
             // Also dispatch a clear-cache event to force Apollo to refetch
@@ -1076,9 +1178,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           window.localStorage.removeItem('jwtToken');
           console.log('Cleared old JWT token');
 
-          // Force update to trigger re-authentication
-          setForceUpdate(prev => prev + 1);
-
           // Delay the wallet-switched event to allow authentication to start
           setTimeout(() => {
             // Also dispatch a clear-cache event to force Apollo to refetch
@@ -1121,9 +1220,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           // Clear JWT first
           window.localStorage.removeItem('jwtToken');
           console.log('Cleared old JWT token');
-
-          // Force update to trigger re-authentication
-          setForceUpdate(prev => prev + 1);
 
           // Delay the wallet-switched event to allow authentication to start
           setTimeout(() => {
@@ -1193,8 +1289,6 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         }, 300); // Reduced - components will poll for auth completion
       }
 
-      // Force re-render to update all components with new address
-      setForceUpdate(prev => prev + 1);
     }
 
     // Update previous address ref
@@ -1262,10 +1356,21 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const effectiveAddress = extensionAddress || appKitAddress;
 
       if (!appKitIsConnected || !effectiveAddress) {
-        // Clear JWT token when wallet disconnects
+        // Clear JWT token and user data when wallet disconnects
         if (typeof window !== 'undefined') {
           window.localStorage.removeItem('jwtToken');
         }
+        setUser(null);
+        return;
+      }
+
+      // 🛡️ CRITICAL: Don't re-authenticate if we already have a valid JWT for this address
+      const existingToken = typeof window !== 'undefined' ? window.localStorage.getItem('jwtToken') : null;
+      const tokenAddress = typeof window !== 'undefined' ? window.localStorage.getItem('jwtTokenAddress') : null;
+
+      if (existingToken && tokenAddress === effectiveAddress) {
+        console.log('✅ Already authenticated with this address, skipping re-authentication');
+        console.log('📊 User data will be fetched automatically by useCurrentUserQuery');
         return;
       }
 
@@ -1275,22 +1380,63 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           console.log('Using extension address (overriding AppKit)');
         }
 
+        // 📧 Use the memoized socialEmail from embeddedWalletInfo
+        console.log('========================================');
+        console.log('📧 EMAIL DETECTION');
+        console.log('========================================');
+
+        if (socialEmail) {
+          console.log('✅ EMAIL DETECTED:', socialEmail);
+          console.log('📤 Will send to backend:', socialEmail);
+        } else {
+          console.log('❌ NO EMAIL DETECTED');
+          console.log('ℹ️ Possible reasons:');
+          console.log('   1. User connected with wallet app (Phantom/Solflare) - no email provided');
+          console.log('   2. User connected with Reown but didn\'t use social login');
+          console.log('   3. Reown Authentication not enabled in dashboard');
+        }
+        console.log('========================================\n');
+
+        // 🔐 Simple authentication with wallet address and email (no signature required)
+        console.log('✅ Authenticating with wallet address and email (no signature)');
+
         const result = await authenticateWallet({
           variables: {
             walletAddress: effectiveAddress,
-            // Simple mode: Just wallet address (no signature verification)
-            // For secure mode, you can sign a message and include signature + message
+            message: null,           // ← No message signing
+            signature: null,         // ← No signature required
+            email: socialEmail,      // ← Email from OAuth
           },
         });
 
         if (result.data?.authenticateWallet?.token) {
           const token = result.data.authenticateWallet.token;
+          const userData = result.data.authenticateWallet.user;
 
           // Store JWT token in localStorage
           if (typeof window !== 'undefined') {
             window.localStorage.setItem('jwtToken', token);
+            window.localStorage.setItem('jwtTokenAddress', effectiveAddress);
             console.log('✅ Wallet authenticated successfully, JWT token stored');
             console.log('Current wallet address:', effectiveAddress);
+
+            if (socialEmail) {
+              console.log('✅ Email sent to backend:', socialEmail);
+              console.log('💡 Backend should save email automatically');
+            }
+          }
+
+          // Update user context with the returned user data (includes email)
+          if (userData) {
+            console.log('✅ Updating user context with authenticated user data');
+            console.log('📧 User email from backend:', userData.email);
+            setUser(userData);
+
+            // Also trigger a refetch to ensure we have the latest data
+            setTimeout(() => {
+              console.log('🔄 Refetching current user to ensure data is up-to-date');
+              refetchCurrentUser();
+            }, 500);
           }
 
           // Clear any previous auth errors on successful authentication
@@ -1299,15 +1445,39 @@ export function WalletProvider({ children }: { children: ReactNode }) {
           const errorMessage = result.data.authenticateWallet.errors.join(', ');
           console.error('❌ Authentication failed:', errorMessage);
           setAuthError(errorMessage);
+
+          // Show error notification to user
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('show-notification', {
+              detail: {
+                type: 'error',
+                message: `❌ Authentication failed: ${errorMessage}`
+              }
+            }));
+          }
         }
       } catch (error) {
         console.error('❌ Error authenticating wallet:', error);
-        setAuthError(error instanceof Error ? error.message : 'Unknown authentication error');
+        const errorMsg = error instanceof Error ? error.message : 'Unknown authentication error';
+        setAuthError(errorMsg);
+
+        // Show error notification to user
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('show-notification', {
+            detail: {
+              type: 'error',
+              message: `❌ Authentication error: ${errorMsg}`
+            }
+          }));
+        }
       }
     };
 
     authenticateWithBackend();
-  }, [appKitIsConnected, appKitAddress, extensionAddress, authenticateWallet, forceUpdate]);
+  }, [appKitIsConnected, appKitAddress, extensionAddress, authenticateWallet]);
+
+  // NOTE: Email is now sent directly during wallet authentication (see authenticateWallet above)
+  // No need for separate email linking useEffect anymore
 
   const value: WalletContextType = {
     isConnected,

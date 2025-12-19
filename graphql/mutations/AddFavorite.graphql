@@ -1,0 +1,9 @@
+mutation AddFavorite($productId: ID!) {
+  addFavorite(productId: $productId) {
+    topupProduct {
+      id
+      isFavorite
+    }
+    errors
+  }
+}

@@ -2,11 +2,13 @@ mutation AuthenticateWallet(
   $walletAddress: String!
   $signature: String
   $message: String
+  $email: String
 ) {
   authenticateWallet(
     walletAddress: $walletAddress
     signature: $signature
     message: $message
+    email: $email
   ) {
     user {
       ...UserSession

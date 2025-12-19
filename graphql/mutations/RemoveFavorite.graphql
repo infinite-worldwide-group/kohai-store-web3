@@ -1,0 +1,9 @@
+mutation RemoveFavorite($productId: ID!) {
+  removeFavorite(productId: $productId) {
+    topupProduct {
+      id
+      isFavorite
+    }
+    errors
+  }
+}

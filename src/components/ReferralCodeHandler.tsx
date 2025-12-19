@@ -60,8 +60,26 @@ export default function ReferralCodeHandler() {
             setShowNotification(false);
           }, 5000);
         } else if (result?.success === false) {
-          // Only show error if it's not "already used" error
-          if (!result.message?.toLowerCase().includes('already')) {
+          const errorMsg = result.message?.toLowerCase() || '';
+
+          // Show error for "own referral code" - this is important to display
+          if (errorMsg.includes('own referral') || errorMsg.includes('cannot use your own')) {
+            setNotificationMessage('❌ You cannot use your own referral code. Please use a code from another user.');
+            setNotificationType('error');
+            setShowNotification(true);
+
+            // Clear the pending code so user isn't stuck
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('pendingReferralCode');
+            }
+
+            // Auto-hide after 7 seconds (longer for important errors)
+            setTimeout(() => {
+              setShowNotification(false);
+            }, 7000);
+          }
+          // Only show other errors if it's not "already used" error
+          else if (!errorMsg.includes('already')) {
             setNotificationMessage(result.message || 'Failed to apply referral code.');
             setNotificationType('error');
             setShowNotification(true);

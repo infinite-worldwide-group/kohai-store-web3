@@ -24,16 +24,10 @@ export function EmailVerificationProvider({ children }: { children: ReactNode })
     fetchPolicy: 'network-only', // Always fetch fresh data from server
     notifyOnNetworkStatusChange: true, // Notify when network status changes
   });
-  const [mounted, setMounted] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [hasShownModal, setHasShownModal] = useState(false);
   const [hasCheckedInitialConnection, setHasCheckedInitialConnection] = useState(false);
   const [autoReopenTimer, setAutoReopenTimer] = useState<NodeJS.Timeout | null>(null);
-
-  // Prevent hydration mismatch
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Refetch user data when wallet address changes
   useEffect(() => {
@@ -196,21 +190,6 @@ export function EmailVerificationProvider({ children }: { children: ReactNode })
   return (
     <EmailVerificationContext.Provider value={value}>
       {children}
-
-      {/* Debug Button - Only in development */}
-      {mounted && process.env.NODE_ENV === 'development' && isConnected && (
-        <button
-          onClick={() => {
-            console.log('🧪 Manual trigger - Opening email modal');
-            console.log('Current user:', currentUserData?.currentUser);
-            setShowEmailModal(true);
-          }}
-          className="fixed bottom-4 left-4 z-50 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-lg hover:bg-orange-600"
-          title="Test Email Modal (Dev Only)"
-        >
-          📧 Test Email Modal
-        </button>
-      )}
 
       {/* Global Email Verification Modal */}
       {showEmailModal && isConnected && (

@@ -15,6 +15,7 @@ fragment TopupProduct on TopupProduct {
   category
   userInput
   vendorId
+  isFavorite
   topupProductItems {
     ...TopupProductItem
   }
@@ -37,6 +38,7 @@ fragment TopupProductDetail on TopupProduct {
   category
   userInput
   vendorId
+  isFavorite
   topupProductItems {
     ...TopupProductItem
   }
@@ -54,4 +56,5 @@ fragment TopupProductList on TopupProduct {
   publisherLogoUrl
   countryCodes
   category
+  isFavorite
 }

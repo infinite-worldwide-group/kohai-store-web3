@@ -1,28 +1,14 @@
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useState } from 'react';
 import { useApplyReferralCodeMutation } from 'graphql/generated/graphql';
 
 const REFERRAL_CODE_KEY = 'pendingReferralCode';
 
 export function useReferralCode() {
-  const searchParams = useSearchParams();
   const [applyReferralCode] = useApplyReferralCodeMutation();
   const [isApplying, setIsApplying] = useState(false);
 
-  // Capture referral code from URL on mount
-  useEffect(() => {
-    const refCode = searchParams?.get('ref');
-
-    if (refCode) {
-      console.log('📎 Referral code detected in URL:', refCode);
-
-      // Store in localStorage for later use
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(REFERRAL_CODE_KEY, refCode.toUpperCase());
-        console.log('✅ Referral code saved to localStorage');
-      }
-    }
-  }, [searchParams]);
+  // NOTE: We no longer auto-store referral codes from URL
+  // The referral confirmation page handles storing after user confirms
 
   // Function to apply the pending referral code (call after wallet connection)
   const applyPendingReferralCode = async () => {
@@ -44,11 +30,17 @@ export function useReferralCode() {
       });
 
       if (result.data?.applyReferralCode?.errors && result.data.applyReferralCode.errors.length > 0) {
-        console.error('❌ Failed to apply referral code:', result.data.applyReferralCode.errors);
+        const errorMessage = result.data.applyReferralCode.errors.join(', ');
+
+        // Don't log "already used" error as it's expected behavior
+        if (!errorMessage.toLowerCase().includes('already used')) {
+          console.error('❌ Failed to apply referral code:', result.data.applyReferralCode.errors);
+        }
+
         setIsApplying(false);
         return {
           success: false,
-          message: result.data.applyReferralCode.errors.join(', ')
+          message: errorMessage
         };
       }
 

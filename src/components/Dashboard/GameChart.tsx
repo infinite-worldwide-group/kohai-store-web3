@@ -16,8 +16,24 @@ const options: ApexOptions = {
   colors: ["#3C50E0", "#6577F3", "#8FD0EF", "#0FADCF"],
   labels: ["Desktop", "Tablet", "Mobile", "Unknown"],
   legend: {
-    show: false,
+    show: true,
     position: "bottom",
+    horizontalAlign: "center",
+    fontFamily: "Satoshi, sans-serif",
+    fontSize: "14px",
+    markers: {
+      radius: 12,
+    },
+    itemMargin: {
+      horizontal: 8,
+      vertical: 5,
+    },
+    onItemClick: {
+      toggleDataSeries: true,
+    },
+    onItemHover: {
+      highlightDataSeries: true,
+    },
   },
 
   plotOptions: {
@@ -38,6 +54,10 @@ const options: ApexOptions = {
         chart: {
           width: 380,
         },
+        legend: {
+          show: true,
+          position: "bottom",
+        },
       },
     },
     {
@@ -45,6 +65,11 @@ const options: ApexOptions = {
       options: {
         chart: {
           width: 200,
+        },
+        legend: {
+          show: true,
+          position: "bottom",
+          fontSize: "12px",
         },
       },
     },
