@@ -1441,6 +1441,54 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     }
   }, [isConnected, address, userInputFields, userData, productPriceUsd, authenticateWallet, createOrder, productItem, currentUserData, createGameAccount, validateGameAccount, refetchGameAccounts, showConfirmation]);
 
+  // FPX Payment Handler (Meld.io Integration)
+  const handleFPXPayment = useCallback(async () => {
+    if (!isConnected || !address) {
+      setFormErrors(["Please connect your wallet first to proceed with FPX payment"]);
+      return;
+    }
+
+    setProcessingPayment(true);
+    setFormErrors([]);
+
+    try {
+      // Calculate payment amount (with discount if applicable)
+      const finalAmount = hasDiscount ? discountedPriceUsd : productPriceUsd;
+
+      // Create Meld payment session
+      const response = await fetch('/api/topup/create-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-wallet-address': address || '',
+        },
+        body: JSON.stringify({
+          amount: finalAmount,
+          network: 'solana',
+          token: 'USDT',
+          paymentMethod: 'meld',
+          currency: 'USD', // Change to 'MYR' if preferred
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success && data.meldPayment) {
+        console.log('✅ Meld payment session created:', data.meldPayment.paymentId);
+
+        // Redirect to Meld checkout page
+        window.location.href = data.meldPayment.paymentUrl;
+      } else {
+        setFormErrors(data.errors || ['Failed to create FPX payment session']);
+        setProcessingPayment(false);
+      }
+    } catch (err: any) {
+      console.error('FPX payment error:', err);
+      setFormErrors([err.message || 'Failed to initiate FPX payment']);
+      setProcessingPayment(false);
+    }
+  }, [isConnected, address, hasDiscount, discountedPriceUsd, productPriceUsd]);
+
   if (orderResult) {
     return (
       <div className="rounded-lg bg-green-500/10 p-6 backdrop-blur-md">
@@ -2214,6 +2262,32 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                   `💰 Pay ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USDT`
                 )}
               </button>
+
+              {/* FPX Payment Option */}
+              <div className="mt-3 border-t border-purple-500/30 pt-3">
+                <p className="mb-2 text-xs text-purple-300">Or pay with:</p>
+                <button
+                  type="button"
+                  onClick={handleFPXPayment}
+                  disabled={processingPayment}
+                  className="w-full rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 px-4 py-3 text-sm font-semibold text-purple-300 transition hover:from-purple-500/30 hover:to-pink-500/30 disabled:opacity-50"
+                >
+                  {processingPayment ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
+                      </svg>
+                      Redirecting to payment...
+                    </span>
+                  ) : (
+                    `🏦 Pay ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USD with FPX/Card`
+                  )}
+                </button>
+                <p className="mt-2 text-xs text-purple-400/60">
+                  Supports: FPX (Malaysia), Credit/Debit Cards, Bank Transfer
+                </p>
+              </div>
 
               {/* Test/Demo Mode */}
               <div className="mt-3 border-t border-blue-500/30 pt-3">

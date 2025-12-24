@@ -1,5 +1,7 @@
 export type NetworkType = "solana" | "ethereum" | "bsc" | "avalanche" | "tron";
 
+export type PaymentMethod = "crypto" | "meld"; // crypto = QR code, meld = fiat payment
+
 export type PaymentSessionStatus = "pending" | "processing" | "completed" | "failed" | "expired";
 
 export interface Network {
@@ -26,6 +28,15 @@ export interface LiFiQuoteMetadata {
   route?: any;                   // LI.FI route details
 }
 
+export interface MeldPaymentMetadata {
+  paymentId: string;             // Meld payment ID
+  paymentUrl: string;            // Meld checkout URL
+  currency: string;              // Fiat currency (USD, MYR, etc.)
+  fiatAmount: number;            // Amount in fiat currency
+  exchangeRate?: number;         // Fiat to crypto exchange rate
+  paymentMethods?: string[];     // Available payment methods (FPX, card, etc.)
+}
+
 export interface PaymentSession {
   sessionId: string;
   userId: number;
@@ -33,14 +44,16 @@ export interface PaymentSession {
   amount: number;
   token: string;
   network: NetworkType;
+  paymentMethod: PaymentMethod; // How user pays (crypto QR or Meld fiat)
   status: PaymentSessionStatus;
-  depositAddress: string; // Where user sends funds
+  depositAddress: string; // Where user sends funds (crypto) or merchant wallet (meld)
   createdAt: Date;
   expiresAt: Date;
   txHash?: string;
   completedAt?: Date;
   metadata?: {
     lifi?: LiFiQuoteMetadata;
+    meld?: MeldPaymentMetadata;
     [key: string]: any;
   };
 }
@@ -49,13 +62,16 @@ export interface CreatePaymentSessionRequest {
   amount: number;
   network: NetworkType;
   token?: string; // defaults to USDT
+  paymentMethod?: PaymentMethod; // defaults to crypto
+  currency?: string; // for Meld fiat payments (USD, MYR, etc.)
 }
 
 export interface CreatePaymentSessionResponse {
   success: boolean;
   session?: PaymentSession;
-  paymentUrl?: string; // URL to payment page
-  quote?: LiFiQuoteMetadata; // Bridge quote information
+  paymentUrl?: string; // URL to payment page (or Meld checkout URL)
+  quote?: LiFiQuoteMetadata; // Bridge quote information (for crypto)
+  meldPayment?: MeldPaymentMetadata; // Meld payment info (for fiat)
   errors?: string[];
 }
 

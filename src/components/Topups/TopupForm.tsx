@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/contexts/WalletContext";
 import Loader from "@/components/common/Loader";
-import type { Network, CreatePaymentSessionResponse } from "@/types/topup";
+import PaymentMethodModal from "@/components/Topups/PaymentMethodModal";
+import type { Network, CreatePaymentSessionResponse, PaymentMethod } from "@/types/topup";
 
 const TopupForm = () => {
   const router = useRouter();
@@ -16,6 +17,7 @@ const TopupForm = () => {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [error, setError] = useState<string>("");
   const [isAuthenticating, setIsAuthenticating] = useState(true);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Define available networks for topup
   const networks: Network[] = [
@@ -108,8 +110,8 @@ const TopupForm = () => {
     }
   }, [isConnected, address, isAuthenticating]);
 
-  // Handle create payment session
-  const handleCreateSession = async () => {
+  // Handle payment button click - show payment method modal
+  const handlePayClick = () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError("Please enter a valid amount");
       return;
@@ -120,6 +122,13 @@ const TopupForm = () => {
       return;
     }
 
+    setError("");
+    setShowPaymentModal(true);
+  };
+
+  // Handle payment method selection
+  const handlePaymentMethodSelect = async (paymentMethod: PaymentMethod) => {
+    setShowPaymentModal(false);
     setIsCreatingSession(true);
     setError("");
 
@@ -134,14 +143,21 @@ const TopupForm = () => {
           amount: parseFloat(amount),
           network: selectedNetworkId,
           token: "USDT",
+          paymentMethod,
+          currency: "USD", // or MYR for Malaysia
         }),
       });
 
       const data: CreatePaymentSessionResponse = await response.json();
 
       if (data.success && data.session) {
-        // Redirect to payment page
-        router.push(`/topups/pay/${data.session.sessionId}`);
+        if (paymentMethod === 'meld' && data.meldPayment) {
+          // Redirect to Meld checkout page
+          window.location.href = data.meldPayment.paymentUrl;
+        } else {
+          // Redirect to crypto payment page
+          router.push(`/topups/pay/${data.session.sessionId}`);
+        }
       } else {
         setError(data.errors?.join(", ") || "Failed to create payment session");
       }
@@ -264,7 +280,7 @@ const TopupForm = () => {
       {/* Generate Payment Button */}
       <div className="rounded-lg bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 p-6 mb-6">
         <button
-          onClick={handleCreateSession}
+          onClick={handlePayClick}
           disabled={isCreatingSession || !amount || parseFloat(amount) <= 0}
           className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-4 text-lg font-semibold text-white transition hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -286,13 +302,22 @@ const TopupForm = () => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 />
               </svg>
-              Generating Payment...
+              Processing...
             </div>
           ) : (
-            "Generate Payment QR Code"
+            "Continue to Payment"
           )}
         </button>
       </div>
+
+      {/* Payment Method Modal */}
+      <PaymentMethodModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onSelectMethod={handlePaymentMethodSelect}
+        amount={parseFloat(amount) || 0}
+        isProcessing={isCreatingSession}
+      />
 
       {/* Auto-Conversion Notice */}
       <div className="rounded-lg bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 p-6">

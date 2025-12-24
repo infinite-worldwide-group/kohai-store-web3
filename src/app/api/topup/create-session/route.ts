@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { CreatePaymentSessionRequest, CreatePaymentSessionResponse, PaymentSession } from '@/types/topup';
 import { saveSession, getAllSessions } from '@/lib/topupStorage';
 import { getQuote } from '@/lib/lifiClient';
+import { createMeldPayment } from '@/lib/meldClient';
 
 // Generate unique session ID
 function generateSessionId(): string {
@@ -13,7 +14,7 @@ function generateSessionId(): string {
 export async function POST(request: NextRequest) {
   try {
     const body: CreatePaymentSessionRequest = await request.json();
-    const { amount, network, token = 'USDT' } = body;
+    const { amount, network, token = 'USDT', paymentMethod = 'crypto', currency = 'USD' } = body;
 
     // Get user info from JWT token
     // In production, verify JWT and get user data
@@ -59,6 +60,86 @@ export async function POST(request: NextRequest) {
       } as CreatePaymentSessionResponse, { status: 400 });
     }
 
+    // Handle based on payment method
+    if (paymentMethod === 'meld') {
+      // === MELD FIAT PAYMENT FLOW ===
+      console.log(`Creating Meld fiat payment for ${amount} ${currency}`);
+
+      // Create payment session ID first
+      const sessionId = generateSessionId();
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3002';
+
+      try {
+        const meldPayment = await createMeldPayment({
+          amount,
+          currency,
+          cryptoCurrency: 'SOL-USDT',
+          destinationAddress: process.env.NEXT_PUBLIC_MERCHANT_WALLET_SOL || depositAddress,
+          orderId: sessionId,
+          returnUrl: `${baseUrl}/topups/pay/${sessionId}?payment=meld`,
+          webhookUrl: `${baseUrl}/api/topup/meld/webhook`,
+        });
+
+        if (!meldPayment.success) {
+          return NextResponse.json({
+            success: false,
+            errors: meldPayment.errors || ['Failed to create Meld payment'],
+          } as CreatePaymentSessionResponse, { status: 500 });
+        }
+
+        // Create session with Meld metadata
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+
+        const session: PaymentSession = {
+          sessionId,
+          userId,
+          walletAddress,
+          amount,
+          token,
+          network: 'solana', // Meld always delivers to Solana
+          paymentMethod: 'meld',
+          status: 'pending',
+          depositAddress: process.env.NEXT_PUBLIC_MERCHANT_WALLET_SOL || depositAddress,
+          createdAt: now,
+          expiresAt,
+          metadata: {
+            meld: {
+              paymentId: meldPayment.paymentId,
+              paymentUrl: meldPayment.paymentUrl,
+              currency,
+              fiatAmount: amount,
+            },
+            ip: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip'),
+            userAgent: request.headers.get('user-agent'),
+          },
+        };
+
+        saveSession(session);
+        console.log(`✅ Created Meld payment session: ${sessionId} with payment ID: ${meldPayment.paymentId}`);
+
+        return NextResponse.json({
+          success: true,
+          session,
+          paymentUrl: meldPayment.paymentUrl, // Redirect to Meld checkout
+          meldPayment: {
+            paymentId: meldPayment.paymentId,
+            paymentUrl: meldPayment.paymentUrl,
+            currency,
+            fiatAmount: amount,
+          },
+        } as CreatePaymentSessionResponse);
+
+      } catch (meldError: any) {
+        console.error('Error creating Meld payment:', meldError);
+        return NextResponse.json({
+          success: false,
+          errors: [meldError.message || 'Failed to create Meld payment'],
+        } as CreatePaymentSessionResponse, { status: 500 });
+      }
+    }
+
+    // === CRYPTO PAYMENT FLOW (existing) ===
     // Fetch LI.FI quote for bridge fees and estimated output
     console.log(`Fetching LI.FI quote for ${amount} ${token} on ${network}`);
     let quote;
@@ -91,6 +172,7 @@ export async function POST(request: NextRequest) {
       amount,
       token,
       network,
+      paymentMethod: 'crypto',
       status: 'pending',
       depositAddress, // Where user sends funds (Solana for SOL, EVM address for EVM chains)
       createdAt: now,
