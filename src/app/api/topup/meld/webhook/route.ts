@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession, updateSession } from '@/lib/topupStorage';
 import { verifyMeldWebhook, type MeldWebhookPayload } from '@/lib/meldClient';
+import { createOrderServerSide } from '@/lib/serverGraphQL';
 
 /**
  * Meld.io Webhook Handler
@@ -9,22 +10,57 @@ import { verifyMeldWebhook, type MeldWebhookPayload } from '@/lib/meldClient';
  * Auto-credits user balance when payment is completed
  */
 
-// Credit user balance after successful payment
-async function creditUserBalance(sessionId: string, amount: number, txHash: string): Promise<boolean> {
+/**
+ * Create order for user after successful Meld payment
+ * This automatically purchases the game credit for the user
+ */
+async function createOrderForPayment(
+  sessionId: string,
+  session: any,
+  amount: number,
+  txHash: string
+): Promise<{ success: boolean; order?: any; errors?: string[] }> {
   try {
-    // TODO: Implement actual balance crediting
-    // 1. Update user's USDT balance in database
-    // 2. Log transaction in transaction history
-    // 3. Trigger webhook/notification to user
-
-    console.log(`💰 Crediting ${amount} USDT to session ${sessionId}`);
+    console.log(`🛒 Creating order for session ${sessionId}`);
     console.log(`📝 Transaction hash: ${txHash}`);
+    console.log(`💰 Amount: ${amount} USDT`);
 
-    // Mock successful credit
-    return true;
-  } catch (error) {
-    console.error('Error crediting balance:', error);
-    return false;
+    // Check if product information is available
+    if (!session.topupProductItemId) {
+      console.warn(`⚠️ No product ID in session ${sessionId} - skipping order creation`);
+      return {
+        success: false,
+        errors: ['No product ID specified - payment received but order not created'],
+      };
+    }
+
+    // Create order via GraphQL
+    const orderResult = await createOrderServerSide({
+      topupProductItemId: session.topupProductItemId,
+      transactionSignature: txHash,
+      userData: session.userData,
+      cryptoCurrency: 'USDT',
+      cryptoAmount: amount,
+      // Note: jwtToken would be needed for authentication
+      // In production, you'd need to get the user's JWT token
+      // For now, the backend should create order based on wallet address in tx
+    });
+
+    if (orderResult.success && orderResult.order) {
+      console.log(`✅ Order created successfully: ${orderResult.order.orderNumber}`);
+      console.log(`   Order ID: ${orderResult.order.id}`);
+      console.log(`   Status: ${orderResult.order.status}`);
+      return orderResult;
+    } else {
+      console.error(`❌ Failed to create order:`, orderResult.errors);
+      return orderResult;
+    }
+  } catch (error: any) {
+    console.error('Error creating order:', error);
+    return {
+      success: false,
+      errors: [error.message || 'Failed to create order'],
+    };
   }
 }
 
@@ -80,26 +116,50 @@ export async function POST(request: NextRequest) {
         console.log(`   Crypto: ${payload.cryptoAmount} ${payload.cryptoCurrency}`);
         console.log(`   TX Hash: ${payload.txHash}`);
 
-        // Credit user balance
-        const credited = await creditUserBalance(
+        // Create order for user (auto-purchase game credit)
+        const orderResult = await createOrderForPayment(
           payload.orderId,
+          session,
           payload.cryptoAmount, // Use crypto amount (SOL USDT)
           payload.txHash || ''
         );
 
-        if (credited) {
+        if (orderResult.success && orderResult.order) {
+          // Order created successfully
           updateSession(payload.orderId, {
             status: 'completed',
             txHash: payload.txHash,
             completedAt: new Date(),
+            metadata: {
+              ...session.metadata,
+              order: {
+                orderId: orderResult.order.id,
+                orderNumber: orderResult.order.orderNumber,
+                status: orderResult.order.status,
+              },
+            },
           });
 
-          // TODO: Send notification to user
-          console.log(`📧 TODO: Send notification to user for session ${payload.orderId}`);
+          console.log(`🎉 Payment processed and order created successfully!`);
+          console.log(`   Order Number: ${orderResult.order.orderNumber}`);
+          // TODO: Send notification to user with order details
         } else {
+          // Payment received but order creation failed
+          // Still mark payment as completed but flag the issue
           updateSession(payload.orderId, {
-            status: 'failed',
+            status: 'completed',
+            txHash: payload.txHash,
+            completedAt: new Date(),
+            metadata: {
+              ...session.metadata,
+              orderCreationFailed: true,
+              orderErrors: orderResult.errors,
+            },
           });
+
+          console.error(`⚠️ Payment received but order creation failed`);
+          console.error(`   Errors:`, orderResult.errors);
+          // TODO: Alert admin about failed order creation
         }
         break;
 

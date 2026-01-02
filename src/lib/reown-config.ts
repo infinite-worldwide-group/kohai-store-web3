@@ -53,6 +53,8 @@ export const modal = createAppKit({
     analytics: true,
     email: true,      // ✅ Enable email login
     socials: ['google', 'discord', 'github', 'apple'], // ✅ Enable social logins
+    onramp: true,     // ✅ Enable On-Ramp (buy crypto with fiat via Meld.io)
+    swaps: true,      // ✅ Enable Swap (swap tokens directly in wallet)
   },
   enableWalletConnect: true,
   enableInjected: true,

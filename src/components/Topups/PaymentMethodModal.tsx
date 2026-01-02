@@ -24,9 +24,19 @@ export default function PaymentMethodModal({
 
   const handleSelect = (method: PaymentMethod) => {
     setSelectedMethod(method);
-    setTimeout(() => {
-      onSelectMethod(method);
-    }, 300);
+
+    // Show info for FPX/Meld option
+    if (method === 'meld') {
+      // Small delay to show selection animation
+      setTimeout(() => {
+        onSelectMethod(method);
+      }, 300);
+    } else {
+      // Crypto payment - proceed immediately
+      setTimeout(() => {
+        onSelectMethod(method);
+      }, 300);
+    }
   };
 
   return (
@@ -79,7 +89,7 @@ export default function PaymentMethodModal({
                     Option 1: Pay with Crypto
                   </h3>
                   <p className="text-sm text-gray-400 mb-3">
-                    Send crypto from your wallet using QR code or address
+                    Manually send crypto from your wallet (based on network selected above)
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-500/20 text-blue-300">
@@ -106,7 +116,7 @@ export default function PaymentMethodModal({
               </div>
             </button>
 
-            {/* Option 2: Fiat Payment (Meld) */}
+            {/* Option 2: Fiat Payment (Reown On-Ramp) */}
             <button
               onClick={() => handleSelect('meld')}
               disabled={isProcessing}
@@ -130,7 +140,7 @@ export default function PaymentMethodModal({
                     Option 2: Pay with FPX / Card
                   </h3>
                   <p className="text-sm text-gray-400 mb-3">
-                    Pay with FPX, credit card, or bank transfer (fiat currency)
+                    Pay with FPX, card, or bank transfer → Buy crypto and receive it in your wallet
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-500/20 text-green-300">
@@ -143,9 +153,11 @@ export default function PaymentMethodModal({
                       🏦 Bank Transfer
                     </span>
                   </div>
-                  <p className="text-xs text-green-400 mt-2">
-                    ✓ Instant conversion to SOL USDT
-                  </p>
+                  <div className="mt-3 p-2 bg-blue-500/10 border border-blue-500/30 rounded">
+                    <p className="text-xs text-blue-300">
+                      💡 <strong>Tip:</strong> Select <strong>USDT</strong> (not SOL) in the checkout to receive stablecoin. If you buy SOL by mistake, use the "Swap SOL to USDT" button to convert it.
+                    </p>
+                  </div>
                 </div>
                 {selectedMethod === 'meld' && (
                   <div className="flex-shrink-0">

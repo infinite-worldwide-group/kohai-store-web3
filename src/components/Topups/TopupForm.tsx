@@ -3,13 +3,16 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useWallet } from "@/contexts/WalletContext";
+import { useAppKit } from '@reown/appkit/react';
 import Loader from "@/components/common/Loader";
 import PaymentMethodModal from "@/components/Topups/PaymentMethodModal";
+import SwapButton from "@/components/Swap/SwapButton";
 import type { Network, CreatePaymentSessionResponse, PaymentMethod } from "@/types/topup";
 
 const TopupForm = () => {
   const router = useRouter();
   const { isConnected, address } = useWallet();
+  const appKit = useAppKit();
   const [mounted, setMounted] = useState(false);
   const [selectedNetworkId, setSelectedNetworkId] = useState<string>("solana");
   const [amount, setAmount] = useState<string>("");
@@ -61,10 +64,10 @@ const TopupForm = () => {
   // Wait for wallet context to initialize and authenticate
   useEffect(() => {
     if (mounted) {
-      // Give wallet more time to initialize and authenticate
+      // Give wallet time to initialize
       const timer = setTimeout(() => {
         setWalletInitialized(true);
-      }, 1000); // Increased from 500ms to 1000ms
+      }, 100); // Reduced to 100ms for faster initial load
       return () => clearTimeout(timer);
     }
   }, [mounted]);
@@ -84,14 +87,14 @@ const TopupForm = () => {
         setIsAuthenticating(false);
         if (authTimeout) clearTimeout(authTimeout);
       } else {
-        // Wallet not connected yet - wait up to 3 seconds total
+        // Wallet not connected yet - wait up to 1 second total
         console.log('Waiting for wallet connection...');
         authTimeout = setTimeout(() => {
-          // After 3 seconds, if still not connected, stop loading
+          // After 1 second, if still not connected, stop loading
           // Don't redirect - just show connect wallet message
           console.log('Timeout - showing page anyway');
           setIsAuthenticating(false);
-        }, 3000);
+        }, 1000); // Reduced to 1000ms for faster initial load
       }
     };
 
@@ -129,8 +132,34 @@ const TopupForm = () => {
   // Handle payment method selection
   const handlePaymentMethodSelect = async (paymentMethod: PaymentMethod) => {
     setShowPaymentModal(false);
-    setIsCreatingSession(true);
     setError("");
+
+    // Handle Reown On-Ramp FPX/Card Payment
+    if (paymentMethod === 'meld') {
+      try {
+        console.log(`💳 Opening Reown on-ramp for FPX/Card payment`);
+        console.log(`💡 User will buy USDT on Solana and it will go to their wallet`);
+
+        // Open Reown on-ramp modal with USDT on Solana as default
+        // User buys crypto with FPX/Card → Receives USDT to their Solana wallet
+        appKit.open({
+          view: 'OnRampProviders',
+        });
+
+        // Note: Reown on-ramp providers (like Meld) will handle the currency selection
+        // The user's connected Solana wallet address will be used automatically
+        console.log(`💡 Connected wallet: ${address}`);
+        console.log(`💡 Network: Solana`);
+        console.log(`💡 Default token: USDT`);
+      } catch (err: any) {
+        console.error("Error opening on-ramp:", err);
+        setError("Failed to open payment gateway. Please try again.");
+      }
+      return;
+    }
+
+    // Handle crypto payment (existing flow)
+    setIsCreatingSession(true);
 
     try {
       const response = await fetch("/api/topup/create-session", {
@@ -151,13 +180,8 @@ const TopupForm = () => {
       const data: CreatePaymentSessionResponse = await response.json();
 
       if (data.success && data.session) {
-        if (paymentMethod === 'meld' && data.meldPayment) {
-          // Redirect to Meld checkout page
-          window.location.href = data.meldPayment.paymentUrl;
-        } else {
-          // Redirect to crypto payment page
-          router.push(`/topups/pay/${data.session.sessionId}`);
-        }
+        // Redirect to crypto payment page
+        router.push(`/topups/pay/${data.session.sessionId}`);
       } else {
         setError(data.errors?.join(", ") || "Failed to create payment session");
       }
@@ -217,11 +241,16 @@ const TopupForm = () => {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white mb-2">Topup Your Wallet</h1>
-        <p className="text-gray-400">
-          Add funds to your wallet by transferring crypto from any supported network.
-          All deposits are automatically converted to SOL USDT.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Topup Your Wallet</h1>
+            <p className="text-gray-400">
+              Add funds directly to your wallet on any supported network.
+              You'll receive the funds in your connected wallet.
+            </p>
+          </div>
+          <SwapButton />
+        </div>
       </div>
 
       {/* Amount Input */}
@@ -340,13 +369,13 @@ const TopupForm = () => {
             <ol className="text-sm text-purple-200/80 space-y-2 list-decimal list-inside">
               <li>Enter the amount you want to top up</li>
               <li>Select your preferred network</li>
-              <li>Click "Generate Payment QR Code"</li>
-              <li>Scan the QR code with your wallet or copy the address</li>
-              <li>Send the exact amount to the provided address</li>
+              <li>Click "Continue to Payment"</li>
+              <li>You'll see your wallet address to send funds to</li>
+              <li>Send the exact amount to your own wallet address</li>
               <li>Your balance will be updated automatically (5-15 minutes)</li>
             </ol>
             <p className="text-sm text-purple-200/80 mt-3">
-              <strong>Note:</strong> All deposits from other networks are automatically converted to SOL USDT at the current market rate.
+              <strong>Note:</strong> Topups go directly to your connected wallet. You maintain full control of your funds.
             </p>
           </div>
         </div>

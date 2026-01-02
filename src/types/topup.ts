@@ -51,6 +51,9 @@ export interface PaymentSession {
   expiresAt: Date;
   txHash?: string;
   completedAt?: Date;
+  // Product/Order information (for auto-creating orders)
+  topupProductItemId?: string;
+  userData?: Record<string, any>;
   metadata?: {
     lifi?: LiFiQuoteMetadata;
     meld?: MeldPaymentMetadata;
@@ -64,6 +67,9 @@ export interface CreatePaymentSessionRequest {
   token?: string; // defaults to USDT
   paymentMethod?: PaymentMethod; // defaults to crypto
   currency?: string; // for Meld fiat payments (USD, MYR, etc.)
+  // Product information (for auto-creating orders)
+  topupProductItemId?: string;
+  userData?: Record<string, any>;
 }
 
 export interface CreatePaymentSessionResponse {

@@ -14,12 +14,20 @@ function generateSessionId(): string {
 export async function POST(request: NextRequest) {
   try {
     const body: CreatePaymentSessionRequest = await request.json();
-    const { amount, network, token = 'USDT', paymentMethod = 'crypto', currency = 'USD' } = body;
+    const {
+      amount,
+      network,
+      token = 'USDT',
+      paymentMethod = 'crypto',
+      currency = 'USD',
+      topupProductItemId,
+      userData,
+    } = body;
 
     // Get user info from JWT token
     // In production, verify JWT and get user data
-    const authHeader = request.headers.get('authorization');
-    const jwtToken = authHeader?.replace('Bearer ', '') || '';
+    // const authHeader = request.headers.get('authorization');
+    // const jwtToken = authHeader?.replace('Bearer ', '') || '';
 
     // Mock user data - in production, decode JWT and get actual user
     const userId = 123; // Replace with actual user ID from JWT
@@ -32,23 +40,14 @@ export async function POST(request: NextRequest) {
       } as CreatePaymentSessionResponse, { status: 400 });
     }
 
-    // Get merchant wallet address based on selected network
-    // Users send USDT to merchant's wallet on the selected network
-    // Then receive SOL USDT in their Solana wallet
-    const merchantWallets: Record<string, string | undefined> = {
-      solana: process.env.NEXT_PUBLIC_MERCHANT_WALLET_SOL,
-      ethereum: process.env.NEXT_PUBLIC_MERCHANT_WALLET_ETH,
-      bsc: process.env.NEXT_PUBLIC_MERCHANT_WALLET_BNB,
-      avalanche: process.env.NEXT_PUBLIC_MERCHANT_WALLET_AVAX,
-      tron: process.env.NEXT_PUBLIC_MERCHANT_WALLET_TRON,
-    };
-
-    const depositAddress = merchantWallets[network];
+    // Use user's wallet address as deposit address
+    // Users top up directly to their own wallet
+    const depositAddress = walletAddress;
 
     if (!depositAddress) {
       return NextResponse.json({
         success: false,
-        errors: [`Merchant wallet not configured for ${network} network`],
+        errors: ['User wallet address is required'],
       } as CreatePaymentSessionResponse, { status: 400 });
     }
 
@@ -70,17 +69,28 @@ export async function POST(request: NextRequest) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3002';
 
       try {
+        console.log('Creating Meld payment with params:', {
+          amount,
+          currency,
+          cryptoCurrency: 'USDT',
+          destinationAddress: walletAddress,
+          orderId: sessionId,
+        });
+
         const meldPayment = await createMeldPayment({
           amount,
           currency,
-          cryptoCurrency: 'SOL-USDT',
-          destinationAddress: process.env.NEXT_PUBLIC_MERCHANT_WALLET_SOL || depositAddress,
+          cryptoCurrency: 'USDT', // USDT on Solana network
+          destinationAddress: walletAddress, // User's wallet address
           orderId: sessionId,
           returnUrl: `${baseUrl}/topups/pay/${sessionId}?payment=meld`,
           webhookUrl: `${baseUrl}/api/topup/meld/webhook`,
         });
 
+        console.log('Meld payment response:', meldPayment);
+
         if (!meldPayment.success) {
+          console.error('Meld payment creation failed:', meldPayment.errors);
           return NextResponse.json({
             success: false,
             errors: meldPayment.errors || ['Failed to create Meld payment'],
@@ -100,9 +110,11 @@ export async function POST(request: NextRequest) {
           network: 'solana', // Meld always delivers to Solana
           paymentMethod: 'meld',
           status: 'pending',
-          depositAddress: process.env.NEXT_PUBLIC_MERCHANT_WALLET_SOL || depositAddress,
+          depositAddress: walletAddress, // User's wallet address
           createdAt: now,
           expiresAt,
+          topupProductItemId, // Store product ID for auto-order creation
+          userData, // Store user data for order
           metadata: {
             meld: {
               paymentId: meldPayment.paymentId,
@@ -168,15 +180,17 @@ export async function POST(request: NextRequest) {
     const session: PaymentSession = {
       sessionId,
       userId,
-      walletAddress, // User's Solana wallet (for receiving SOL USDT)
+      walletAddress, // User's wallet address (for receiving funds)
       amount,
       token,
       network,
       paymentMethod: 'crypto',
       status: 'pending',
-      depositAddress, // Where user sends funds (Solana for SOL, EVM address for EVM chains)
+      depositAddress, // User's own wallet address
       createdAt: now,
       expiresAt,
+      topupProductItemId, // Store product ID for auto-order creation
+      userData, // Store user data for order
       metadata: {
         lifi: {
           quoteId: quote.quoteId,

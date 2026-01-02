@@ -252,7 +252,10 @@ export default function PaymentPage() {
                 )}
               </div>
               <p className="text-sm text-gray-400 text-center">
-                Scan with your {session.network} wallet
+                Scan with your {networkNames[session.network] || session.network} wallet
+              </p>
+              <p className="text-xs text-blue-400 text-center mt-2">
+                Your Wallet Address
               </p>
             </div>
           </div>
@@ -283,7 +286,8 @@ export default function PaymentPage() {
 
             {/* Address */}
             <div className="mb-4">
-              <p className="text-xs text-gray-400 mb-1">Deposit Address</p>
+              <p className="text-xs text-gray-400 mb-1">Topup Destination</p>
+              <p className="text-xs text-blue-400 mb-2">Your Wallet Address</p>
               <div className="bg-black/30 rounded-lg p-3 mb-2 break-all font-mono text-sm text-white border border-white/10">
                 {session.depositAddress}
               </div>
@@ -291,7 +295,7 @@ export default function PaymentPage() {
                 onClick={handleCopyAddress}
                 className="w-full rounded-lg bg-blue-500/20 border border-blue-500/30 px-4 py-2 text-sm font-semibold text-blue-300 transition hover:bg-blue-500/30"
               >
-                {copied ? "✓ Copied!" : "📋 Copy Address"}
+                {copied ? "✓ Copied!" : "📋 Copy Your Address"}
               </button>
             </div>
 
@@ -367,15 +371,16 @@ export default function PaymentPage() {
                     <span> {networkNames[session.network] || session.network}</span>
                   )}
                 </li>
-                <li>Send exactly <strong>{session.amount} {session.token}</strong> to the address above</li>
-                <li>Do not send from an exchange (use your personal wallet)</li>
+                <li>Send exactly <strong>{session.amount} {session.token}</strong> to <strong>your wallet address</strong> shown above</li>
+                <li>This is a direct topup to your own wallet</li>
                 <li>Transaction confirmation typically takes 5-15 minutes</li>
-                <li>Your balance will be credited automatically upon confirmation</li>
-                <li>This payment link expires in 30 minutes</li>
+                <li>Your wallet balance will update automatically once confirmed</li>
+                <li>This payment link expires in 60 minutes</li>
               </ol>
               {session.network !== "solana" && (
                 <p className="text-sm text-purple-200/80 mt-3">
-                  <strong>Note:</strong> Your deposit will be automatically converted to SOL USDT at the current market rate.
+                  <strong>Cross-Chain Topup:</strong> You are topping up {session.token} on {networkNames[session.network] || session.network} directly to your wallet.
+                  The funds will be available in your wallet once the transaction is confirmed on the blockchain.
                 </p>
               )}
             </div>

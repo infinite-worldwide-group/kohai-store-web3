@@ -5,6 +5,7 @@ import FooterPremium from "../Premium/Footer";
 import HeaderPremium from "../Premium/Header";
 import Footer from "../User/Footer";
 import Header from "../User/Header";
+import MobileSwapButton from "../Swap/MobileSwapButton";
 
 export default function StoreLayout({
   children,
@@ -60,6 +61,8 @@ export default function StoreLayout({
             </>
           )}
         </div>
+        {/* Mobile Swap Button - Floating Action Button */}
+        <MobileSwapButton />
       </div>
     </Suspense>
   );

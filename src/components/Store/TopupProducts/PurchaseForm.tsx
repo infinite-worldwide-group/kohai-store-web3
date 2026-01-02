@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, useValidateGameAccountMutation, TopupProductItemFragment, useGetActiveVouchersQuery } from "graphql/generated/graphql";
 import { useWallet } from "@/contexts/WalletContext";
 import { useCurrency } from "@/components/Store/CurrencySelector";
+import { useAppKit } from '@reown/appkit/react';
 import dynamic from "next/dynamic";
 
 const EmailVerificationModal = dynamic(() => import("@/components/Store/EmailVerification/EmailVerificationModal"), {
@@ -23,6 +24,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [validateGameAccount] = useValidateGameAccountMutation();
   const { isConnected, address, sendTransaction, connect, getBalance } = useWallet();
   const { selectedCurrency, convertPrice, formatPrice } = useCurrency();
+  const appKit = useAppKit();
   
   const { data: currentUserData, refetch: refetchUser } = useCurrentUserQuery({
     skip: !isConnected,
@@ -1441,53 +1443,51 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     }
   }, [isConnected, address, userInputFields, userData, productPriceUsd, authenticateWallet, createOrder, productItem, currentUserData, createGameAccount, validateGameAccount, refetchGameAccounts, showConfirmation]);
 
-  // FPX Payment Handler (Meld.io Integration)
+  // FPX Payment Handler (Reown On-Ramp Integration)
   const handleFPXPayment = useCallback(async () => {
     if (!isConnected || !address) {
       setFormErrors(["Please connect your wallet first to proceed with FPX payment"]);
       return;
     }
 
-    setProcessingPayment(true);
+    // Clear any existing errors
     setFormErrors([]);
+    setProcessingPayment(true);
 
     try {
-      // Calculate payment amount (with discount if applicable)
-      const finalAmount = hasDiscount ? discountedPriceUsd : productPriceUsd;
+      // Calculate the final price (with discount if applicable)
+      const finalPrice = hasDiscount ? discountedPriceUsd : productPriceUsd;
 
-      // Create Meld payment session
-      const response = await fetch('/api/topup/create-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-address': address || '',
-        },
-        body: JSON.stringify({
-          amount: finalAmount,
-          network: 'solana',
-          token: 'USDT',
-          paymentMethod: 'meld',
-          currency: 'USD', // Change to 'MYR' if preferred
-        }),
+      console.log(`💳 Opening Reown on-ramp for FPX/Card payment`);
+      console.log(`   Product: ${productItem.displayName}`);
+      console.log(`   Price: $${finalPrice.toFixed(2)}`);
+      console.log(`   💡 User will buy crypto with FPX/Card and receive it in their wallet`);
+      console.log(`   💡 Connected wallet: ${address}`);
+      console.log(`   💡 Tip: Select USDT (not SOL) in the checkout to receive stablecoin`);
+
+      // Open Reown on-ramp modal
+      // User buys crypto with FPX/Card → Receives to their Solana wallet
+      // They can then use the crypto to complete the purchase
+      appKit.open({
+        view: 'OnRampProviders',
       });
 
-      const data = await response.json();
+      // Reset processing state after opening modal
+      setProcessingPayment(false);
 
-      if (data.success && data.meldPayment) {
-        console.log('✅ Meld payment session created:', data.meldPayment.paymentId);
+      // Note: After user buys crypto via on-ramp, they need to return
+      // to this page and complete the purchase with their crypto balance
+      console.log(`💡 After buying crypto, return here and complete your purchase`);
 
-        // Redirect to Meld checkout page
-        window.location.href = data.meldPayment.paymentUrl;
-      } else {
-        setFormErrors(data.errors || ['Failed to create FPX payment session']);
-        setProcessingPayment(false);
-      }
     } catch (err: any) {
-      console.error('FPX payment error:', err);
-      setFormErrors([err.message || 'Failed to initiate FPX payment']);
+      console.error("Error opening on-ramp:", err);
+      setFormErrors([
+        '❌ Failed to open payment gateway.',
+        'Error: ' + (err.message || 'Unknown error')
+      ]);
       setProcessingPayment(false);
     }
-  }, [isConnected, address, hasDiscount, discountedPriceUsd, productPriceUsd]);
+  }, [isConnected, address, productItem, productPriceUsd, discountedPriceUsd, hasDiscount, appKit]);
 
   if (orderResult) {
     return (
@@ -2263,7 +2263,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 )}
               </button>
 
-              {/* FPX Payment Option */}
+              {/* FPX Payment Option - Reown On-Ramp */}
               <div className="mt-3 border-t border-purple-500/30 pt-3">
                 <p className="mb-2 text-xs text-purple-300">Or pay with:</p>
                 <button
@@ -2281,12 +2281,17 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                       Redirecting to payment...
                     </span>
                   ) : (
-                    `🏦 Pay ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USD with FPX/Card`
+                    `🏦 Pay ${Math.max(hasDiscount ? discountedPriceUsd : productPriceUsd, 1.00).toFixed(2)} USD with FPX/Card`
                   )}
                 </button>
                 <p className="mt-2 text-xs text-purple-400/60">
                   Supports: FPX (Malaysia), Credit/Debit Cards, Bank Transfer
                 </p>
+                {(hasDiscount ? discountedPriceUsd : productPriceUsd) < 1.00 && (
+                  <p className="mt-2 text-xs text-yellow-400/80">
+                    ℹ️ Minimum payment: $1.00 USD (Product price is below minimum)
+                  </p>
+                )}
               </div>
 
               {/* Test/Demo Mode */}

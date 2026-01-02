@@ -2,21 +2,21 @@
  * Meld.io Fiat Payment Gateway Client
  *
  * Handles fiat-to-crypto payments through Meld.io
- * Users pay with FPX, cards, bank transfer → Merchant receives SOL USDT
+ * Users pay with FPX, cards, bank transfer → Merchant receives USDT on Solana network
  */
 
 export interface MeldConfig {
   apiKey: string;
   secretKey: string;
   merchantId: string;
-  environment: 'sandbox' | 'production';
+  environment: 'sandbox' | 'production' | 'demo';
 }
 
 export interface MeldPaymentRequest {
   amount: number; // Amount in USD/MYR
   currency: string; // USD, MYR, etc.
-  cryptoCurrency: string; // SOL-USDT
-  destinationAddress: string; // Merchant SOL USDT wallet
+  cryptoCurrency: string; // USDT (on Solana network)
+  destinationAddress: string; // Merchant USDT wallet address (Solana)
   customerEmail?: string;
   customerPhone?: string;
   orderId: string; // Your internal order/session ID
@@ -75,7 +75,7 @@ function getMeldConfig(): MeldConfig {
     apiKey: process.env.MELD_API_KEY || '',
     secretKey: process.env.MELD_SECRET_KEY || '',
     merchantId: process.env.MELD_MERCHANT_ID || '',
-    environment: (process.env.MELD_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
+    environment: (process.env.MELD_ENVIRONMENT as 'sandbox' | 'production' | 'demo') || 'sandbox',
   };
 }
 
@@ -98,24 +98,48 @@ export async function createMeldPayment(
 ): Promise<MeldPaymentResponse> {
   const config = getMeldConfig();
 
-  if (!config.apiKey || !config.secretKey) {
-    throw new Error('Meld.io API credentials not configured. Please add MELD_API_KEY and MELD_SECRET_KEY to .env.local');
+  console.log('Meld config check:', {
+    hasApiKey: !!config.apiKey,
+    hasSecretKey: !!config.secretKey,
+    hasMerchantId: !!config.merchantId,
+    environment: config.environment,
+  });
+
+  // Demo/Test mode - if credentials are not configured or set to demo values
+  const isDemoMode = !config.apiKey ||
+                     !config.secretKey ||
+                     config.apiKey === 'your_meld_api_key_here' ||
+                     config.apiKey === 'demo' ||
+                     config.environment === 'demo';
+
+  if (isDemoMode) {
+    console.log('⚠️ Running in DEMO mode - Meld credentials not configured');
+    console.log('💡 To use real Meld payments, add credentials to .env.local');
+
+    // Return mock payment response for testing
+    const mockPaymentId = `DEMO-${Date.now()}`;
+    return {
+      success: true,
+      paymentId: mockPaymentId,
+      paymentUrl: `https://demo-checkout.meld.io/pay/${mockPaymentId}`, // Demo URL
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 3600000).toISOString(),
+    };
   }
 
   try {
     const apiUrl = getMeldApiUrl();
+    console.log('Meld API URL:', apiUrl);
 
     // Meld.io API request format
+    // USDT SPL Token Mint Address on Solana: Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
     const meldRequest = {
       merchantId: config.merchantId,
       orderId: request.orderId,
-      amount: request.amount,
-      currency: request.currency,
-      destinationCrypto: {
-        currency: request.cryptoCurrency,
-        address: request.destinationAddress,
-        network: 'solana', // For SOL USDT
-      },
+      sourceAmount: request.amount,
+      sourceCurrencyCode: request.currency, // Fiat currency (USD, MYR)
+      destinationCurrencyCode: request.cryptoCurrency, // USDT
+      walletAddress: request.destinationAddress,
       customer: {
         email: request.customerEmail,
         phone: request.customerPhone,
@@ -124,6 +148,8 @@ export async function createMeldPayment(
       webhookUrl: request.webhookUrl,
       expiresIn: 3600, // 1 hour expiry
     };
+
+    console.log('📤 Meld API Request:', JSON.stringify(meldRequest, null, 2));
 
     const response = await fetch(`${apiUrl}/payments`, {
       method: 'POST',
@@ -137,10 +163,12 @@ export async function createMeldPayment(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error('❌ Meld API Error:', response.status, errorData);
       throw new Error(`Meld API error: ${response.status} - ${errorData.message || response.statusText}`);
     }
 
     const data = await response.json();
+    console.log('📥 Meld API Response:', JSON.stringify(data, null, 2));
 
     return {
       success: true,
