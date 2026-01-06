@@ -3,7 +3,7 @@
 import { useStore } from "@/contexts/StoreContext";
 import { useState, useMemo } from "react";
 import styles from "./TopupProduct.module.css";
-import { getCategoryStats } from "@/utils/productCategorization";
+import { getCategoryStats, CategorizedProduct } from "@/utils/productCategorization";
 
 type CategoryType = "others" | "favourite" | "popular" | "new_release" | "trending";
 type PlatformType = "mobile" | "pc" | "console";
@@ -59,9 +59,9 @@ const FilterPremium = (props: {
     // Get platform counts for filtered products
     const categorized = getCategorizedProducts(filteredProducts, props.favouriteIds);
     return {
-      mobile: categorized.filter(p => p.platform === "mobile").length,
-      pc: categorized.filter(p => p.platform === "pc").length,
-      console: categorized.filter(p => p.platform === "console").length,
+      mobile: categorized.filter((p: CategorizedProduct) => p.platform === "mobile").length,
+      pc: categorized.filter((p: CategorizedProduct) => p.platform === "pc").length,
+      console: categorized.filter((p: CategorizedProduct) => p.platform === "console").length,
     };
   }, [props.products, props.favouriteIds, selectedCategory]);
 
