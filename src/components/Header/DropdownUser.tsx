@@ -18,7 +18,7 @@ const DropdownUser = () => {
     await setMerchant(null);
     await window.localStorage.removeItem("jwtToken");
 
-    redirect("/auth/signin");
+    redirect("/");
   };
 
   if (!user) return null;
