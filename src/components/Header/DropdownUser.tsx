@@ -1,6 +1,5 @@
 "use client";
 import ClickOutside from "@/components/ClickOutside";
-import { useMerchant } from "@/contexts/MerchantContext";
 import { useUser } from "@/contexts/UserContext";
 import Image from "next/image";
 import Link from "next/link";
@@ -9,13 +8,11 @@ import { useState } from "react";
 
 const DropdownUser = () => {
   const { user, setUser } = useUser();
-  const { setMerchant } = useMerchant();
 
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   const logout = async () => {
     await setUser(null);
-    await setMerchant(null);
     await window.localStorage.removeItem("jwtToken");
 
     redirect("/");

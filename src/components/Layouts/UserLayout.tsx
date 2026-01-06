@@ -1,9 +1,7 @@
 "use client";
-import { useMerchant } from "@/contexts/MerchantContext";
 import { useUser } from "@/contexts/UserContext";
 import useLocalStorage from "@/hooks/useLocalStorage";
 import {
-  useCurrentMerchantLazyQuery,
   useCurrentUserLazyQuery,
 } from "graphql/generated/graphql";
 import React, { useEffect } from "react";
@@ -15,17 +13,14 @@ export default function UserLayout({
   children: React.ReactNode;
 }) {
   const { setUser } = useUser();
-  const { setMerchant } = useMerchant();
 
   const [jwtToken] = useLocalStorage<string | null>("jwtToken", null);
 
   const [getUser, { data }] = useCurrentUserLazyQuery();
-  const [getMerchant, { data: merchantData }] = useCurrentMerchantLazyQuery();
 
   const checkSession = async () => {
     if (!!jwtToken) {
       getUser();
-      getMerchant();
     }
   };
 
@@ -33,11 +28,7 @@ export default function UserLayout({
     if (data && data.currentUser) {
       setUser(data.currentUser);
     }
-
-    if (merchantData && merchantData.currentMerchant) {
-      setMerchant(merchantData.currentMerchant);
-    }
-  }, [data, merchantData]);
+  }, [data]);
 
   useEffect(() => {
     checkSession();
