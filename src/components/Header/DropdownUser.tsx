@@ -32,26 +32,22 @@ const DropdownUser = () => {
       >
         <span className="hidden text-right lg:block">
           <span className="block text-sm font-medium text-black dark:text-white">
-            {user.nickname}
+            {user.email || 'User'}
           </span>
-          <span className="block text-xs">{user.email}</span>
+          <span className="block text-xs">{user.walletAddress ? `${user.walletAddress.slice(0, 6)}...${user.walletAddress.slice(-4)}` : ''}</span>
         </span>
 
         <span className="h-12 w-12 rounded-full">
-          {!!user.avatarUrl ? (
-            <img src={user.avatarUrl} style={{ width: 112, height: 112 }} />
-          ) : (
-            <Image
-              width={112}
-              height={112}
-              src={"/images/user/user-01.png"}
-              style={{
-                width: "auto",
-                height: "auto",
-              }}
-              alt="User"
-            />
-          )}
+          <Image
+            width={112}
+            height={112}
+            src={"/images/user/user-01.png"}
+            style={{
+              width: "auto",
+              height: "auto",
+            }}
+            alt="User"
+          />
         </span>
 
         <svg

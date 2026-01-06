@@ -20,7 +20,7 @@ const options: ApexOptions = {
     fontFamily: "Satoshi, sans-serif",
     fontSize: "14px",
     markers: {
-      radius: 12,
+      size: 6,
     },
     itemMargin: {
       horizontal: 8,

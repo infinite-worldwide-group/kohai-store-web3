@@ -186,26 +186,11 @@ export default function SwapPage() {
 
       console.log('📝 Transaction received, sending to wallet...');
 
-      // Decode and send transaction
-      const txBuffer = Buffer.from(swapTransaction, 'base64');
-
-      // Use wallet's sendTransaction
-      const signature = await sendTransaction(txBuffer as any);
-
-      console.log('✅ Swap successful!');
-      console.log('Transaction signature:', signature);
-
-      // Show success
-      alert(`Swap successful! Transaction: ${signature}`);
-
-      // Refresh balance
-      const newBalance = await getBalance();
-      setBalance(String(newBalance || '0'));
-
-      // Reset form
-      setFromAmount('');
-      setToAmount('');
-      setQuote(null);
+      // For swap transactions, we need to send the pre-built transaction
+      // This will be implemented when we have the full swap integration
+      // For now, show an error message
+      console.log('Swap transaction data:', swapTransaction);
+      throw new Error('Swap transaction sending is not yet fully implemented. Please use a direct DEX.');
     } catch (err: any) {
       console.error('❌ Swap error:', err);
       setError(err.message || 'Swap failed. Please try again.');
