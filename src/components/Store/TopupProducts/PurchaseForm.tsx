@@ -1336,33 +1336,10 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     // Open Meld in new window
     window.open(fpxConfirmData.meldUrl, '_blank', 'width=500,height=700,scrollbars=yes');
 
-    // Show success message
-    const messages = [
-      `✅ Meld payment window opened!`,
-      ``,
-      `Top-up amount: ${fpxConfirmData.topupAmountMyr} MYR (~$${fpxConfirmData.topupAmountUsd.toFixed(2)} USD)`,
-      `Product price: $${fpxConfirmData.productPrice.toFixed(2)} USD`
-    ];
-
-    // Add remaining balance info if applicable
-    if (fpxConfirmData.remainingBalance > 0) {
-      messages.push(
-        ``,
-        `💰 Remaining $${fpxConfirmData.remainingBalance.toFixed(2)} USD will stay in your wallet after purchase`
-      );
-    }
-
-    messages.push(
-      ``,
-      `💡 After completing payment in Meld, SOL will be sent to your wallet.`,
-      `💡 You can then swap SOL to USDT in your wallet to complete purchase.`
-    );
-
-    setFormErrors(messages);
-
-    // Close modal
+    // Close modal and clear errors
     setShowFPXConfirmModal(false);
     setFpxConfirmData(null);
+    setFormErrors([]); // Clear any existing errors
   }, [fpxConfirmData]);
 
   // Handle FPX cancel - user clicks "No"
