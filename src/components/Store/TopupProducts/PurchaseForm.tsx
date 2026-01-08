@@ -4,7 +4,6 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useCreateOrderMutation, useAuthenticateWalletMutation, useCurrentUserQuery, useCreateGameAccountMutation, useMyGameAccountsQuery, useDeleteGameAccountMutation, useValidateGameAccountMutation, TopupProductItemFragment, useGetActiveVouchersQuery } from "graphql/generated/graphql";
 import { useWallet } from "@/contexts/WalletContext";
 import { useCurrency } from "@/components/Store/CurrencySelector";
-import { useAppKit } from '@reown/appkit/react';
 import dynamic from "next/dynamic";
 
 const EmailVerificationModal = dynamic(() => import("@/components/Store/EmailVerification/EmailVerificationModal"), {
@@ -24,8 +23,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [validateGameAccount] = useValidateGameAccountMutation();
   const { isConnected, address, sendTransaction, connect, getBalance } = useWallet();
   const { selectedCurrency, convertPrice, formatPrice } = useCurrency();
-  const appKit = useAppKit();
-  
+
   const { data: currentUserData, refetch: refetchUser } = useCurrentUserQuery({
     skip: !isConnected,
     fetchPolicy: 'cache-and-network', // Use cache first, but fetch fresh data
@@ -1268,37 +1266,77 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     try {
       // Calculate the final price (with discount if applicable)
       const finalPrice = hasDiscount ? discountedPriceUsd : productPriceUsd;
+      const MINIMUM_TOPUP_USD = 11; // Meld minimum is ~$11 USD
+      const USD_TO_MYR_RATE = 4.5; // Approximate exchange rate
 
-      console.log(`💳 Opening Reown on-ramp for FPX/Card payment`);
+      console.log(`💳 Opening Meld for FPX/Card payment`);
       console.log(`   Product: ${productItem.displayName}`);
       console.log(`   Price: $${finalPrice.toFixed(2)}`);
-      console.log(`   💡 User will buy crypto with FPX/Card and receive it in their wallet`);
-      console.log(`   💡 Connected wallet: ${address}`);
-      console.log(`   💡 Tip: Select USDT (not SOL) in the checkout to receive stablecoin`);
 
-      // Open Reown on-ramp modal
-      // User buys crypto with FPX/Card → Receives to their Solana wallet
-      // They can then use the crypto to complete the purchase
-      appKit.open({
-        view: 'OnRampProviders',
-      });
+      // Check if below minimum and show warning
+      if (finalPrice < MINIMUM_TOPUP_USD) {
+        const topupAmountUsd = MINIMUM_TOPUP_USD;
+        const topupAmountMyr = Math.ceil(topupAmountUsd * USD_TO_MYR_RATE);
+        const remainingBalanceUsd = topupAmountUsd - finalPrice;
+
+        setFormErrors([
+          `⚠️ Minimum top-up value is $${MINIMUM_TOPUP_USD} USD (~${topupAmountMyr} MYR)`,
+          `Your product price: $${finalPrice.toFixed(2)} USD`,
+          ``,
+          `💡 You'll top up $${topupAmountUsd} USD and pay $${finalPrice.toFixed(2)} for your product.`,
+          `Remaining balance: $${remainingBalanceUsd.toFixed(2)} will stay in your wallet.`,
+          ``,
+          `Click "Pay with FPX / Credit Card" again to proceed with $${topupAmountUsd} top-up.`
+        ]);
+        setProcessingPayment(false);
+        return;
+      }
+
+      // Calculate MYR amount for Meld (round up to nearest whole number)
+      const topupAmountUsd = Math.max(finalPrice, MINIMUM_TOPUP_USD);
+      const topupAmountMyr = Math.ceil(topupAmountUsd * USD_TO_MYR_RATE);
+
+      // Build Meld URL with dynamic amount
+      const meldPublicKey = process.env.NEXT_PUBLIC_MELD_PUBLIC_KEY || 'WXETMuFUQmqqybHuRkSgxv:25B8LJHSfpG6LVjR2ytU5Cwh7Z4Sch2ocoU';
+      const meldCustomerId = process.env.NEXT_PUBLIC_MELD_EXTERNAL_CUSTOMER_ID || '3640df604b8bb5d05ba846326433772c';
+
+      const meldUrl = `https://meldcrypto.com/?` +
+        `publicKey=${encodeURIComponent(meldPublicKey)}` +
+        `&destinationCurrencyCode=USDT` + // Request USDT instead of SOL
+        `&walletAddress=${address}` +
+        `&externalCustomerId=${meldCustomerId}` +
+        `&sourceAmount=${topupAmountMyr}` +
+        `&sourceCurrencyCode=MYR`;
+
+      console.log(`   💳 Opening Meld with ${topupAmountMyr} MYR (~$${topupAmountUsd} USD)`);
+      console.log(`   💡 You'll receive USDT to your wallet: ${address}`);
+
+      // Open Meld in new window
+      window.open(meldUrl, '_blank', 'width=500,height=700,scrollbars=yes');
 
       // Reset processing state after opening modal
       setProcessingPayment(false);
 
-      // Note: After user buys crypto via on-ramp, they need to return
-      // to this page and complete the purchase with their crypto balance
-      console.log(`💡 After buying crypto, return here and complete your purchase`);
+      // Show success message
+      setFormErrors([
+        `✅ Meld payment window opened!`,
+        ``,
+        `Top-up amount: ${topupAmountMyr} MYR (~$${topupAmountUsd.toFixed(2)} USD)`,
+        `Product price: $${finalPrice.toFixed(2)} USD`,
+        ``,
+        `💡 After completing payment in Meld, USDT will be sent to your wallet.`,
+        `💡 Return here and click "Pay with Wallet (USDT)" to complete your purchase.`
+      ]);
 
     } catch (err: any) {
-      console.error("Error opening on-ramp:", err);
+      console.error("Error opening Meld:", err);
       setFormErrors([
-        '❌ Failed to open payment gateway.',
+        '❌ Failed to open Meld payment gateway.',
         'Error: ' + (err.message || 'Unknown error')
       ]);
       setProcessingPayment(false);
     }
-  }, [isConnected, address, productItem, productPriceUsd, discountedPriceUsd, hasDiscount, appKit]);
+  }, [isConnected, address, productItem, productPriceUsd, discountedPriceUsd, hasDiscount]);
 
   if (orderResult) {
     return (
