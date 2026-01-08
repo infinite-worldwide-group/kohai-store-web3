@@ -1276,17 +1276,19 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
     try {
       // Calculate the final price (with discount if applicable)
       const finalPrice = hasDiscount ? discountedPriceUsd : productPriceUsd;
-      const MINIMUM_TOPUP_USD = 11; // Meld minimum is ~$11 USD
-      const USD_TO_MYR_RATE = 4.5; // Approximate exchange rate
+      const MINIMUM_TOPUP_MYR = 51; // Meld minimum is 50.73 MYR, round up to 51
+      const USD_TO_MYR_RATE = 4.5; // Approximate exchange rate (1 USD = 4.5 MYR)
 
       console.log(`💳 Opening Meld for FPX/Card payment`);
       console.log(`   Product: ${productItem.displayName}`);
       console.log(`   Price: $${finalPrice.toFixed(2)}`);
 
-      // Calculate MYR amount for Meld (round up to nearest whole number)
-      // Always use minimum of $11 USD if product price is lower
-      const topupAmountUsd = Math.max(finalPrice, MINIMUM_TOPUP_USD);
-      const topupAmountMyr = Math.ceil(topupAmountUsd * USD_TO_MYR_RATE);
+      // Calculate MYR amount for Meld
+      // Convert USD to MYR and ensure it meets Meld's minimum of 51 MYR
+      let topupAmountMyr = Math.ceil(finalPrice * USD_TO_MYR_RATE);
+      topupAmountMyr = Math.max(topupAmountMyr, MINIMUM_TOPUP_MYR); // Ensure minimum 51 MYR
+
+      const topupAmountUsd = topupAmountMyr / USD_TO_MYR_RATE;
       const remainingBalanceUsd = topupAmountUsd - finalPrice;
 
       // Build Meld URL with dynamic amount
@@ -1295,15 +1297,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       const meldUrl = `https://meldcrypto.com/?` +
         `publicKey=${encodeURIComponent(meldPublicKey)}` +
-        `&destinationCurrencyCode=USDT` + // Request USDT instead of SOL
+        `&destinationCurrencyCode=SOL` + // Use SOL (Solana network only)
         `&walletAddress=${address}` +
         `&externalCustomerId=${meldCustomerId}` +
         `&sourceAmount=${topupAmountMyr}` +
-        `&sourceCurrencyCode=MYR`;
+        `&sourceCurrencyCode=MYR` +
+        `&countryCode=MY`; // Malaysia country code
 
       console.log(`   💳 Preparing Meld payment confirmation`);
-      console.log(`   Amount: ${topupAmountMyr} MYR (~$${topupAmountUsd} USD)`);
-      console.log(`   💡 User will receive USDT to wallet: ${address}`);
+      console.log(`   Amount: ${topupAmountMyr} MYR (~$${topupAmountUsd.toFixed(2)} USD)`);
+      console.log(`   💡 User will receive SOL (Solana) to wallet: ${address}`);
 
       // Show confirmation modal before opening Meld
       setFpxConfirmData({
@@ -1351,8 +1354,8 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
     messages.push(
       ``,
-      `💡 After completing payment in Meld, USDT will be sent to your wallet.`,
-      `💡 Return here and click "Pay with Wallet (USDT)" to complete your purchase.`
+      `💡 After completing payment in Meld, SOL will be sent to your wallet.`,
+      `💡 You can then swap SOL to USDT in your wallet to complete purchase.`
     );
 
     setFormErrors(messages);
@@ -2252,7 +2255,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                         <span className="text-lg font-semibold text-green-400">${fpxConfirmData.remainingBalance.toFixed(2)} USD</span>
                       </div>
                       <p className="mt-2 text-xs text-gray-400 bg-blue-500/10 rounded p-2">
-                        ℹ️ Minimum top-up is $11 USD. The remaining balance will stay in your wallet after purchase.
+                        ℹ️ Minimum top-up is 51 MYR. The remaining SOL balance will stay in your wallet after purchase.
                       </p>
                     </div>
                   )}
@@ -2263,8 +2266,11 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 <p className="text-sm text-blue-200 mb-2">
                   <strong>Payment Method:</strong> FPX / Credit Card via Meld
                 </p>
+                <p className="text-sm text-blue-200 mb-2">
+                  <strong>Network:</strong> Solana
+                </p>
                 <p className="text-sm text-blue-200">
-                  <strong>You'll receive:</strong> USDT to your wallet
+                  <strong>You'll receive:</strong> SOL to your wallet
                 </p>
               </div>
 
@@ -2275,11 +2281,11 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 </p>
                 <p className="flex items-start gap-2">
                   <span className="text-blue-400 flex-shrink-0">2.</span>
-                  <span>USDT will be sent to your wallet</span>
+                  <span>SOL will be sent to your Solana wallet</span>
                 </p>
                 <p className="flex items-start gap-2">
                   <span className="text-blue-400 flex-shrink-0">3.</span>
-                  <span>Return here and click "Pay with Wallet (USDT)"</span>
+                  <span>Swap SOL to USDT, then pay with wallet USDT</span>
                 </p>
               </div>
             </div>
