@@ -634,6 +634,26 @@ const WalletButton = () => {
                   Stake KOHAI
                 </a>
                 <a
+                  href="/swap"
+                  onClick={() => setShowDropdown(false)}
+                  className="flex items-center justify-center gap-2 w-full rounded-lg bg-gradient-to-r from-blue-500/20 to-cyan-500/20 border border-blue-500/30 px-4 py-2 text-sm font-semibold transition hover:from-blue-500/30 hover:to-cyan-500/30"
+                >
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"
+                    />
+                  </svg>
+                  Swap Tokens
+                </a>
+                <a
                   href="/topups"
                   className="flex items-center justify-center gap-2 w-full rounded-lg bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 px-4 py-2 text-sm font-semibold transition hover:from-green-500/30 hover:to-emerald-500/30"
                 >
