@@ -1273,28 +1273,11 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       console.log(`   Product: ${productItem.displayName}`);
       console.log(`   Price: $${finalPrice.toFixed(2)}`);
 
-      // Check if below minimum and show warning
-      if (finalPrice < MINIMUM_TOPUP_USD) {
-        const topupAmountUsd = MINIMUM_TOPUP_USD;
-        const topupAmountMyr = Math.ceil(topupAmountUsd * USD_TO_MYR_RATE);
-        const remainingBalanceUsd = topupAmountUsd - finalPrice;
-
-        setFormErrors([
-          `⚠️ Minimum top-up value is $${MINIMUM_TOPUP_USD} USD (~${topupAmountMyr} MYR)`,
-          `Your product price: $${finalPrice.toFixed(2)} USD`,
-          ``,
-          `💡 You'll top up $${topupAmountUsd} USD and pay $${finalPrice.toFixed(2)} for your product.`,
-          `Remaining balance: $${remainingBalanceUsd.toFixed(2)} will stay in your wallet.`,
-          ``,
-          `Click "Pay with FPX / Credit Card" again to proceed with $${topupAmountUsd} top-up.`
-        ]);
-        setProcessingPayment(false);
-        return;
-      }
-
       // Calculate MYR amount for Meld (round up to nearest whole number)
+      // Always use minimum of $11 USD if product price is lower
       const topupAmountUsd = Math.max(finalPrice, MINIMUM_TOPUP_USD);
       const topupAmountMyr = Math.ceil(topupAmountUsd * USD_TO_MYR_RATE);
+      const remainingBalanceUsd = topupAmountUsd - finalPrice;
 
       // Build Meld URL with dynamic amount
       const meldPublicKey = process.env.NEXT_PUBLIC_MELD_PUBLIC_KEY || 'WXETMuFUQmqqybHuRkSgxv:25B8LJHSfpG6LVjR2ytU5Cwh7Z4Sch2ocoU';
@@ -1317,16 +1300,30 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       // Reset processing state after opening modal
       setProcessingPayment(false);
 
-      // Show success message
-      setFormErrors([
+      // Show success message with remaining balance info if applicable
+      const messages = [
         `✅ Meld payment window opened!`,
         ``,
         `Top-up amount: ${topupAmountMyr} MYR (~$${topupAmountUsd.toFixed(2)} USD)`,
-        `Product price: $${finalPrice.toFixed(2)} USD`,
+        `Product price: $${finalPrice.toFixed(2)} USD`
+      ];
+
+      // Add remaining balance info if product price is below minimum
+      if (finalPrice < MINIMUM_TOPUP_USD && remainingBalanceUsd > 0) {
+        messages.push(
+          ``,
+          `ℹ️ Minimum top-up is $${MINIMUM_TOPUP_USD} USD`,
+          `💰 Remaining $${remainingBalanceUsd.toFixed(2)} USD will stay in your wallet after purchase`
+        );
+      }
+
+      messages.push(
         ``,
         `💡 After completing payment in Meld, USDT will be sent to your wallet.`,
         `💡 Return here and click "Pay with Wallet (USDT)" to complete your purchase.`
-      ]);
+      );
+
+      setFormErrors(messages);
 
     } catch (err: any) {
       console.error("Error opening Meld:", err);
