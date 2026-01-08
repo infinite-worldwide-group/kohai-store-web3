@@ -70,6 +70,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
   const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
 
+  // FPX/Meld confirmation modal states
+  const [showFPXConfirmModal, setShowFPXConfirmModal] = useState(false);
+  const [fpxConfirmData, setFpxConfirmData] = useState<{
+    topupAmountUsd: number;
+    topupAmountMyr: number;
+    productPrice: number;
+    remainingBalance: number;
+    meldUrl: string;
+  } | null>(null);
+
   // Check if user is authenticated (has JWT token)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   
@@ -1291,39 +1301,20 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         `&sourceAmount=${topupAmountMyr}` +
         `&sourceCurrencyCode=MYR`;
 
-      console.log(`   💳 Opening Meld with ${topupAmountMyr} MYR (~$${topupAmountUsd} USD)`);
-      console.log(`   💡 You'll receive USDT to your wallet: ${address}`);
+      console.log(`   💳 Preparing Meld payment confirmation`);
+      console.log(`   Amount: ${topupAmountMyr} MYR (~$${topupAmountUsd} USD)`);
+      console.log(`   💡 User will receive USDT to wallet: ${address}`);
 
-      // Open Meld in new window
-      window.open(meldUrl, '_blank', 'width=500,height=700,scrollbars=yes');
-
-      // Reset processing state after opening modal
+      // Show confirmation modal before opening Meld
+      setFpxConfirmData({
+        topupAmountUsd,
+        topupAmountMyr,
+        productPrice: finalPrice,
+        remainingBalance: remainingBalanceUsd,
+        meldUrl
+      });
+      setShowFPXConfirmModal(true);
       setProcessingPayment(false);
-
-      // Show success message with remaining balance info if applicable
-      const messages = [
-        `✅ Meld payment window opened!`,
-        ``,
-        `Top-up amount: ${topupAmountMyr} MYR (~$${topupAmountUsd.toFixed(2)} USD)`,
-        `Product price: $${finalPrice.toFixed(2)} USD`
-      ];
-
-      // Add remaining balance info if product price is below minimum
-      if (finalPrice < MINIMUM_TOPUP_USD && remainingBalanceUsd > 0) {
-        messages.push(
-          ``,
-          `ℹ️ Minimum top-up is $${MINIMUM_TOPUP_USD} USD`,
-          `💰 Remaining $${remainingBalanceUsd.toFixed(2)} USD will stay in your wallet after purchase`
-        );
-      }
-
-      messages.push(
-        ``,
-        `💡 After completing payment in Meld, USDT will be sent to your wallet.`,
-        `💡 Return here and click "Pay with Wallet (USDT)" to complete your purchase.`
-      );
-
-      setFormErrors(messages);
 
     } catch (err: any) {
       console.error("Error opening Meld:", err);
@@ -1334,6 +1325,49 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setProcessingPayment(false);
     }
   }, [isConnected, address, productItem, productPriceUsd, discountedPriceUsd, hasDiscount]);
+
+  // Handle FPX confirmation - user clicks "Yes"
+  const handleFPXConfirm = useCallback(() => {
+    if (!fpxConfirmData) return;
+
+    // Open Meld in new window
+    window.open(fpxConfirmData.meldUrl, '_blank', 'width=500,height=700,scrollbars=yes');
+
+    // Show success message
+    const messages = [
+      `✅ Meld payment window opened!`,
+      ``,
+      `Top-up amount: ${fpxConfirmData.topupAmountMyr} MYR (~$${fpxConfirmData.topupAmountUsd.toFixed(2)} USD)`,
+      `Product price: $${fpxConfirmData.productPrice.toFixed(2)} USD`
+    ];
+
+    // Add remaining balance info if applicable
+    if (fpxConfirmData.remainingBalance > 0) {
+      messages.push(
+        ``,
+        `💰 Remaining $${fpxConfirmData.remainingBalance.toFixed(2)} USD will stay in your wallet after purchase`
+      );
+    }
+
+    messages.push(
+      ``,
+      `💡 After completing payment in Meld, USDT will be sent to your wallet.`,
+      `💡 Return here and click "Pay with Wallet (USDT)" to complete your purchase.`
+    );
+
+    setFormErrors(messages);
+
+    // Close modal
+    setShowFPXConfirmModal(false);
+    setFpxConfirmData(null);
+  }, [fpxConfirmData]);
+
+  // Handle FPX cancel - user clicks "No"
+  const handleFPXCancel = useCallback(() => {
+    setShowFPXConfirmModal(false);
+    setFpxConfirmData(null);
+    setFormErrors([]);
+  }, []);
 
   if (orderResult) {
     return (
@@ -2162,6 +2196,111 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           onClose={() => setShowEmailModal(false)}
           mandatory={true} // Force email verification before purchase
         />
+      )}
+
+      {/* FPX/Meld Payment Confirmation Modal */}
+      {showFPXConfirmModal && fpxConfirmData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              handleFPXCancel();
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg bg-gradient-to-br from-blue-900 to-blue-800 p-6 shadow-2xl border border-blue-500/30">
+            {/* Header */}
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                <svg className="h-7 w-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+                Confirm Payment
+              </h3>
+              <button
+                onClick={handleFPXCancel}
+                className="text-gray-400 hover:text-white transition"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="mb-6 space-y-4">
+              <div className="rounded-lg bg-white/10 p-4 backdrop-blur-sm">
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-300">Product Price:</span>
+                    <span className="text-lg font-bold text-white">${fpxConfirmData.productPrice.toFixed(2)} USD</span>
+                  </div>
+                  <div className="border-t border-white/10 pt-3">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm text-gray-300">Top-up Amount:</span>
+                      <span className="text-lg font-bold text-blue-300">{fpxConfirmData.topupAmountMyr} MYR</span>
+                    </div>
+                    <div className="text-right text-xs text-gray-400">
+                      (~${fpxConfirmData.topupAmountUsd.toFixed(2)} USD)
+                    </div>
+                  </div>
+
+                  {fpxConfirmData.remainingBalance > 0 && (
+                    <div className="border-t border-white/10 pt-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-300">Remaining Balance:</span>
+                        <span className="text-lg font-semibold text-green-400">${fpxConfirmData.remainingBalance.toFixed(2)} USD</span>
+                      </div>
+                      <p className="mt-2 text-xs text-gray-400 bg-blue-500/10 rounded p-2">
+                        ℹ️ Minimum top-up is $11 USD. The remaining balance will stay in your wallet after purchase.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+                <p className="text-sm text-blue-200 mb-2">
+                  <strong>Payment Method:</strong> FPX / Credit Card via Meld
+                </p>
+                <p className="text-sm text-blue-200">
+                  <strong>You'll receive:</strong> USDT to your wallet
+                </p>
+              </div>
+
+              <div className="text-sm text-gray-300 space-y-2">
+                <p className="flex items-start gap-2">
+                  <span className="text-blue-400 flex-shrink-0">1.</span>
+                  <span>Complete payment in Meld window</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-blue-400 flex-shrink-0">2.</span>
+                  <span>USDT will be sent to your wallet</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-blue-400 flex-shrink-0">3.</span>
+                  <span>Return here and click "Pay with Wallet (USDT)"</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={handleFPXCancel}
+                className="flex-1 rounded-lg bg-gray-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-600"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFPXConfirm}
+                className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-cyan-600 shadow-lg"
+              >
+                Proceed to Meld
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Account Confirmation Modal */}
