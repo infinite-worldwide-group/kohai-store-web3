@@ -1669,13 +1669,20 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
         </div>
       )}
 
-      {/* USDT Balance Display */}
-      {isConnected && (
-        <div className={`mb-2 rounded-lg p-2 ${
-          usdtBalance !== null && usdtBalance < productPriceUsd
-            ? 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/30'
-            : 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30'
-        }`}>
+      {/* USDT Balance Display - Animated */}
+      <div
+        className={`transition-all duration-500 ease-in-out overflow-hidden ${
+          isConnected
+            ? 'max-h-[300px] opacity-100'
+            : 'max-h-0 opacity-0 pointer-events-none'
+        }`}
+      >
+        {isConnected && (
+          <div className={`mb-2 rounded-lg p-2 ${
+            usdtBalance !== null && usdtBalance < productPriceUsd
+              ? 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/30'
+              : 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30'
+          }`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {usdtBalance !== null && usdtBalance < productPriceUsd ? (
@@ -1751,7 +1758,8 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
             )}
           </div>
         </div>
-      )}
+        )}
+      </div>
 
       {/* Error Display */}
       {formErrors.length > 0 && (
