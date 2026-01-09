@@ -81,6 +81,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [usdtBalance, setUsdtBalance] = useState<number | null>(null);
   const [loadingUsdtBalance, setLoadingUsdtBalance] = useState(false);
 
+  // Product selection confirmation (for compact view)
+  const [productConfirmed, setProductConfirmed] = useState(false);
+
   // FPX/Meld confirmation modal states
   const [showFPXConfirmModal, setShowFPXConfirmModal] = useState(false);
   const [fpxConfirmData, setFpxConfirmData] = useState<{
@@ -1393,7 +1396,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   if (orderResult) {
     return (
       <div className="rounded-lg bg-green-500/10 p-6 backdrop-blur-md">
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-2 flex items-center gap-2">
           <svg
             className="h-8 w-8 text-green-400"
             fill="none"
@@ -1410,7 +1413,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
           <h3 className="text-2xl font-bold text-green-400">Order Created Successfully!</h3>
         </div>
 
-        <div className="space-y-3 rounded-lg bg-white/5 p-4">
+        <div className="space-y-3 rounded-lg bg-white/5 p-2">
           <div className="flex justify-between border-b border-white/10 pb-2">
             <span className="text-sm opacity-70">Order Number:</span>
             <span className="font-mono font-semibold">{orderResult.orderNumber}</span>
@@ -1513,90 +1516,132 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   }
 
   return (
-    <div className="rounded-lg bg-white/10 p-6 backdrop-blur-md">
-      <h3 className="mb-4 text-xl font-bold">Complete Your Purchase</h3>
+    <div className="rounded-lg bg-white/10 p-3 backdrop-blur-md">
+      <h3 className="mb-2 text-lg font-bold">Complete Your Purchase</h3>
 
-      {/* Product Item Details */}
-      <div className="mb-6 rounded-lg bg-white/5 p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-lg font-semibold">{productItem.displayName || productItem.name}</p>
-            <p className="text-sm opacity-60">Item ID: {productItem.id}</p>
-          </div>
-          <div className="text-right">
-            {/* Show price in selected currency */}
-            {hasDiscount ? (
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px' }}>
-                  <p className="text-lg font-medium" style={{ textDecoration: 'line-through', opacity: 0.6 }}>
-                    {formatPrice(convertedPrice, selectedCurrency)}
-                  </p>
-                  <p className="text-2xl font-bold" style={{ color: '#00C853' }}>
-                    {formatPrice(discountedPrice, selectedCurrency)}
-                  </p>
-                </div>
-                <div className="flex gap-2 flex-wrap mt-2 justify-end">
-                  {selectedVoucherId && voucherDiscountPercent > 0 ? (
-                    // Show ONLY voucher discount if voucher is selected
-                    <span style={{
-                      fontSize: '0.75em',
-                      background: '#9C27B0',
-                      color: 'white',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      display: 'inline-block'
-                    }}>
-                      {voucherDiscountPercent}% Voucher Discount
-                    </span>
-                  ) : userDiscountPercent > 0 ? (
-                    // Show ONLY tier discount if no voucher selected but user has tier
-                    <span style={{
-                      fontSize: '0.75em',
-                      background: '#00C853',
-                      color: 'white',
-                      padding: '2px 8px',
-                      borderRadius: '4px',
-                      display: 'inline-block'
-                    }}>
-                      {userDiscountPercent}% VIP Tier Discount
-                    </span>
-                  ) : null}
-                </div>
+      {/* Product Item Details - Compact/Expanded View */}
+      {productConfirmed ? (
+        /* Compact View - Selected Product Only */
+        <div className="mb-2 rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 p-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-500/20 rounded-lg px-2 py-1">
+                <svg className="w-5 h-5 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
               </div>
-            ) : (
-              <p className="text-2xl font-bold">
-                {formatPrice(convertedPrice, selectedCurrency)}
-              </p>
-            )}
-            {selectedCurrency.code !== 'USD' && (
-              <p className="text-sm opacity-70 mt-1">
+              <div>
+                <p className="text-sm font-semibold text-white">{productItem.displayName || productItem.name}</p>
+                <p className="text-xs opacity-70">
+                  {hasDiscount ? (
+                    <>
+                      <span className="line-through opacity-60 mr-2">{formatPrice(convertedPrice, selectedCurrency)}</span>
+                      <span className="text-green-400 font-bold">{formatPrice(discountedPrice, selectedCurrency)}</span>
+                    </>
+                  ) : (
+                    <span className="font-semibold">{formatPrice(convertedPrice, selectedCurrency)}</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setProductConfirmed(false)}
+              className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition"
+            >
+              Change
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Full View - All Product Details */
+        <div className="mb-3 rounded-lg bg-white/5 p-2">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-base font-semibold">{productItem.displayName || productItem.name}</p>
+              <p className="text-xs opacity-60">Item ID: {productItem.id}</p>
+            </div>
+            <div className="text-right">
+              {/* Show price in selected currency */}
+              {hasDiscount ? (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '6px' }}>
+                    <p className="text-sm font-medium" style={{ textDecoration: 'line-through', opacity: 0.6 }}>
+                      {formatPrice(convertedPrice, selectedCurrency)}
+                    </p>
+                    <p className="text-lg font-bold" style={{ color: '#00C853' }}>
+                      {formatPrice(discountedPrice, selectedCurrency)}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-wrap mt-1 justify-end">
+                    {selectedVoucherId && voucherDiscountPercent > 0 ? (
+                      // Show ONLY voucher discount if voucher is selected
+                      <span style={{
+                        fontSize: '0.75em',
+                        background: '#9C27B0',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        display: 'inline-block'
+                      }}>
+                        {voucherDiscountPercent}% Voucher Discount
+                      </span>
+                    ) : userDiscountPercent > 0 ? (
+                      // Show ONLY tier discount if no voucher selected but user has tier
+                      <span style={{
+                        fontSize: '0.75em',
+                        background: '#00C853',
+                        color: 'white',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        display: 'inline-block'
+                      }}>
+                        {userDiscountPercent}% VIP Tier Discount
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ) : (
+                <p className="text-2xl font-bold">
+                  {formatPrice(convertedPrice, selectedCurrency)}
+                </p>
+              )}
+              {selectedCurrency.code !== 'USD' && (
+                <p className="text-sm opacity-70 mt-1">
+                  {hasDiscount && (
+                    <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: '8px' }}>
+                      ${productPriceUsd.toFixed(2)}
+                    </span>
+                  )}
+                  <span style={hasDiscount ? { color: '#00C853', fontWeight: 'bold' } : {}}>
+                    ≈ ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USD
+                  </span>
+                </p>
+              )}
+              <p className="text-xs opacity-60 mt-1">
                 {hasDiscount && (
                   <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: '8px' }}>
-                    ${productPriceUsd.toFixed(2)}
+                    {productPriceUsd.toFixed(2)} USDT
                   </span>
                 )}
                 <span style={hasDiscount ? { color: '#00C853', fontWeight: 'bold' } : {}}>
-                  ≈ ${hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USD
+                  Payment: {hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USDT
                 </span>
               </p>
-            )}
-            <p className="text-xs opacity-60 mt-1">
-              {hasDiscount && (
-                <span style={{ textDecoration: 'line-through', opacity: 0.6, marginRight: '8px' }}>
-                  {productPriceUsd.toFixed(2)} USDT
-                </span>
-              )}
-              <span style={hasDiscount ? { color: '#00C853', fontWeight: 'bold' } : {}}>
-                Payment: {hasDiscount ? discountedPriceUsd.toFixed(2) : productPriceUsd.toFixed(2)} USDT
-              </span>
-            </p>
+            </div>
           </div>
+          {/* Confirm Selection Button */}
+          <button
+            onClick={() => setProductConfirmed(true)}
+            className="w-full rounded-lg bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 px-3 py-2 text-sm font-semibold text-blue-300 transition hover:from-blue-500/30 hover:to-purple-500/30"
+          >
+            ✓ Confirm Selection
+          </button>
         </div>
-      </div>
+      )}
 
       {/* USDT Balance Display */}
       {isConnected && (
-        <div className={`mb-6 rounded-lg p-4 ${
+        <div className={`mb-2 rounded-lg p-2 ${
           usdtBalance !== null && usdtBalance < productPriceUsd
             ? 'bg-gradient-to-br from-red-500/10 to-orange-500/10 border border-red-500/30'
             : 'bg-gradient-to-br from-green-500/10 to-emerald-500/10 border border-green-500/30'
@@ -1680,7 +1725,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
       {/* Error Display */}
       {formErrors.length > 0 && (
-        <div className={`mb-4 rounded-lg border p-4 ${
+        <div className={`mb-2 rounded-lg border p-2 ${
           formErrors[0]?.includes('Cancelled') || formErrors[0]?.includes('cancelled')
             ? 'bg-blue-500/10 border-blue-500/30'
             : 'bg-red-500/10 border-red-500/30'
@@ -1707,16 +1752,16 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       )}
 
       {/* Purchase Form */}
-      <div className="space-y-4">
+      <div className="space-y-2">
         {/* Saved Game Accounts Selector */}
         {isConnected && filteredGameAccounts.length > 0 && (
-          <div className="space-y-3 rounded-lg bg-green-500/10 border border-green-500/30 p-4">
-            <h4 className="text-sm font-semibold text-green-300"> Recent Used Accounts</h4>
-            <div className="space-y-2">
+          <div className="space-y-2 rounded-lg bg-green-500/10 border border-green-500/30 p-2">
+            <h4 className="text-xs font-semibold text-green-300">✨ Recent Used Accounts</h4>
+            <div className="space-y-1">
               {filteredGameAccounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`flex items-center justify-between rounded-lg p-3 transition ${
+                  className={`flex items-center justify-between rounded-lg p-2 transition ${
                     selectedGameAccountId === account.id
                       ? 'bg-green-500/20 ring-2 ring-green-400'
                       : 'bg-white/5 hover:bg-white/10'
@@ -1780,7 +1825,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
         {/* User Input Fields */}
         {userInputFields.length > 0 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold opacity-70">Game Account Information</h4>
               {/* Status Badge */}
@@ -1825,7 +1870,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
               return (
                 <div key={`input-${index}-${fieldName}`}>
-                  <label className="mb-1 block text-sm font-medium">
+                  <label className="mb-0.5 block text-xs font-medium">
                     {fieldLabel}
                     {field.required && <span className="text-red-400"> *</span>}
                   </label>
@@ -1836,7 +1881,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                     <select
                       value={userData[fieldName] || ""}
                       onChange={(e) => handleInputChange(fieldName, e.target.value)}
-                      className="w-full rounded-lg bg-white/5 px-4 py-2 text-white outline-none ring-1 ring-white/20 transition focus:ring-2 focus:ring-blue-400"
+                      className="w-full rounded-lg bg-white/5 px-3 py-2 text-sm text-white outline-none ring-1 ring-white/20 transition focus:ring-2 focus:ring-blue-400"
                       required={field.required}
                     >
                       <option value="" disabled className="bg-gray-800">
@@ -1861,7 +1906,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                           placeholder={fieldPlaceholder}
                           value={userData[fieldName] || ""}
                           onChange={(e) => handleInputChange(fieldName, e.target.value)}
-                          className={`w-full rounded-xl bg-white/5 px-4 py-3 ${(isAccountIdField || isServerIdField) && userData[fieldName] ? 'pr-12' : 'pr-4'} text-white placeholder-white/40 outline-none ring-1 transition focus:ring-2 ${
+                          className={`w-full rounded-lg bg-white/5 px-3 py-2 ${(isAccountIdField || isServerIdField) && userData[fieldName] ? 'pr-10' : 'pr-3'} text-sm text-white placeholder-white/40 outline-none ring-1 transition focus:ring-2 ${
                             validationStatus === 'validating' ? 'ring-blue-400/50' :
                             validationStatus === 'valid' ? 'ring-green-400/50' :
                             validationStatus === 'invalid' ? 'ring-red-400/50' :
@@ -1900,7 +1945,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
             {/* Account Summary - Show only IGN or Game ID */}
             {isConnected && Object.keys(userData).length > 0 && (
-              <div className={`rounded-xl border p-4 ${verifiedIGN ? 'bg-green-500/10 border-green-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
+              <div className={`rounded-lg border p-2 ${verifiedIGN ? 'bg-green-500/10 border-green-500/30' : 'bg-blue-500/10 border-blue-500/30'}`}>
                 {verifiedIGN ? (
                   /* Show only IGN if verified */
                   <div className="flex items-center justify-between">
@@ -1935,7 +1980,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 type="button"
                 onClick={handleVerifyAccount}
                 disabled={isVerifying}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-500/20 hover:bg-purple-500/30 rounded-xl border border-purple-500/50 text-purple-300 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-purple-500/20 hover:bg-purple-500/30 rounded-lg border border-purple-500/50 text-sm text-purple-300 font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isVerifying ? (
                   <>
@@ -1958,7 +2003,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
             {/* Voucher Selection */}
             {activeVouchers && activeVouchers.length > 0 && (
-              <div className="mb-6 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 p-4">
+              <div className="mb-2 rounded-lg bg-gradient-to-r from-purple-500/10 to-pink-500/10 border border-purple-500/30 p-2">
                 <div className="flex items-center gap-2 mb-3">
                   <svg className="w-5 h-5 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
                     <path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" />
@@ -2022,7 +2067,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
           </div>
         ) : (
-          <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-4">
+          <div className="rounded-lg bg-yellow-500/10 border border-yellow-500/30 p-2">
             <p className="text-sm text-yellow-300">
               No user input fields configured for this product. Check the console for debugging info.
             </p>
@@ -2031,7 +2076,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
         {/* Email Verification Section - Only show if connected */}
         {isConnected && currentUserData?.currentUser && (!currentUserData.currentUser.email || !currentUserData.currentUser.emailVerified) && (
-          <div className="rounded-lg bg-orange-500/10 border border-orange-500/30 p-4">
+          <div className="rounded-lg bg-orange-500/10 border border-orange-500/30 p-2">
             <h4 className="mb-2 font-semibold text-orange-300">
               📧 {!currentUserData.currentUser.email ? 'Email Required' : 'Email Verification Required'}
             </h4>
@@ -2067,7 +2112,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         )}
 
         {/* Wallet Payment Section */}
-        <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+        <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-2">
           <h4 className="mb-2 font-semibold text-blue-300">💳 Payment with Wallet</h4>
 
           {!isConnected ? (
@@ -2079,7 +2124,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               <button
                 type="button"
                 onClick={connect}
-                className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-3 font-semibold text-white transition hover:from-blue-600 hover:to-purple-600"
+                className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-3 py-2 font-semibold text-white transition hover:from-blue-600 hover:to-purple-600"
               >
                 🔗 Connect Wallet to Pay
               </button>
@@ -2149,7 +2194,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 type="button"
                 onClick={handleWalletPayment}
                 disabled={processingPayment}
-                className="w-full rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-3 font-semibold text-white transition hover:from-green-600 hover:to-emerald-600 disabled:opacity-50"
+                className="w-full rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 px-3 py-2 font-semibold text-white transition hover:from-green-600 hover:to-emerald-600 disabled:opacity-50"
               >
                 {processingPayment ? (
                   <span className="flex items-center justify-center gap-2">
@@ -2171,7 +2216,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                   type="button"
                   onClick={handleFPXPayment}
                   disabled={processingPayment}
-                  className="w-full rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 px-4 py-3 text-sm font-semibold text-purple-300 transition hover:from-purple-500/30 hover:to-pink-500/30 disabled:opacity-50"
+                  className="w-full rounded-lg bg-gradient-to-r from-purple-500/20 to-pink-500/20 border border-purple-500/30 px-3 py-2 text-sm font-semibold text-purple-300 transition hover:from-purple-500/30 hover:to-pink-500/30 disabled:opacity-50"
                 >
                   {processingPayment ? (
                     <span className="flex items-center justify-center gap-2">
@@ -2231,7 +2276,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         >
           <div className="w-full max-w-md rounded-lg bg-gradient-to-br from-blue-900 to-blue-800 p-6 shadow-2xl border border-blue-500/30">
             {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="text-2xl font-bold text-white flex items-center gap-2">
                 <svg className="h-7 w-7 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
@@ -2249,9 +2294,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             </div>
 
             {/* Content */}
-            <div className="mb-6 space-y-4">
-              <div className="rounded-lg bg-white/10 p-4 backdrop-blur-sm">
-                <div className="space-y-3">
+            <div className="mb-3 space-y-4">
+              <div className="rounded-lg bg-white/10 p-2 backdrop-blur-sm">
+                <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-300">Product Price:</span>
                     <span className="text-lg font-bold text-white">${fpxConfirmData.productPrice.toFixed(2)} USD</span>
@@ -2282,7 +2327,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                 </div>
               </div>
 
-              <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+              <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-2">
                 <p className="text-sm text-blue-200 mb-2">
                   <strong>Payment Method:</strong> FPX / Credit Card via Meld
                 </p>
@@ -2314,13 +2359,13 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             <div className="flex gap-3">
               <button
                 onClick={handleFPXCancel}
-                className="flex-1 rounded-lg bg-gray-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-gray-600"
+                className="flex-1 rounded-lg bg-gray-700 px-3 py-2 text-sm font-semibold text-white transition hover:bg-gray-600"
               >
                 Cancel
               </button>
               <button
                 onClick={handleFPXConfirm}
-                className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-cyan-600 shadow-lg"
+                className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-cyan-600 shadow-lg"
               >
                 Proceed to Meld
               </button>
@@ -2341,7 +2386,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         >
           <div className="w-full max-w-md rounded-lg bg-gradient-to-br from-gray-900 to-gray-800 p-6 shadow-2xl border border-white/10">
             {/* Header */}
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-3 flex items-center justify-between">
               <h3 className="text-2xl font-bold text-white">
                 {confirmModalData.isDemo ? "Confirm Simulation" : "Confirm Payment"}
               </h3>
@@ -2357,7 +2402,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             </div>
 
             {/* Account Details */}
-            <div className={`mb-4 rounded-lg border p-4 ${confirmModalData.ign ? 'bg-green-500/10 border-green-500/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
+            <div className={`mb-2 rounded-lg border p-2 ${confirmModalData.ign ? 'bg-green-500/10 border-green-500/30' : 'bg-orange-500/10 border-orange-500/30'}`}>
               {confirmModalData.ign ? (
                 <>
                   <div className="flex items-center gap-2 mb-2">
@@ -2392,7 +2437,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             </div>
 
             {/* Payment Details */}
-            <div className="mb-6 space-y-3 rounded-lg bg-blue-500/10 border border-blue-500/30 p-4">
+            <div className="mb-3 space-y-3 rounded-lg bg-blue-500/10 border border-blue-500/30 p-2">
               <div>
                 <p className="text-xs text-white/50">Product</p>
                 <p className="text-sm font-medium text-white">{confirmModalData.productName}</p>
@@ -2409,13 +2454,13 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
             <div className="flex gap-3">
               <button
                 onClick={handleCancel}
-                className="flex-1 rounded-lg bg-white/5 px-4 py-3 font-semibold text-white transition hover:bg-white/10 border border-white/20"
+                className="flex-1 rounded-lg bg-white/5 px-3 py-2 font-semibold text-white transition hover:bg-white/10 border border-white/20"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirm}
-                className="flex-1 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-4 py-3 font-semibold text-white transition hover:from-green-600 hover:to-blue-600"
+                className="flex-1 rounded-lg bg-gradient-to-r from-green-500 to-blue-500 px-3 py-2 font-semibold text-white transition hover:from-green-600 hover:to-blue-600"
               >
                 {confirmModalData.isDemo ? "Proceed with Simulation" : "Confirm Payment"}
               </button>
