@@ -10,6 +10,17 @@ const EmailVerificationModal = dynamic(() => import("@/components/Store/EmailVer
   ssr: false,
 });
 
+// Meld minimum amounts for different currencies (equivalent to ~$11 USD)
+const MINIMUM_AMOUNTS: Record<string, number> = {
+  'MYR': 51,    // 50.73 MYR
+  'SGD': 15,    // ~$11 USD
+  'USD': 11,    // $11 USD
+  'IDR': 175000, // ~$11 USD
+  'PHP': 625,   // ~$11 USD
+  'THB': 370,   // ~$11 USD
+  'VND': 280000, // ~$11 USD
+};
+
 interface PurchaseFormProps {
   productItem: TopupProductItemFragment;
   userInput?: any; // JSON schema from product
@@ -74,7 +85,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
   const [showFPXConfirmModal, setShowFPXConfirmModal] = useState(false);
   const [fpxConfirmData, setFpxConfirmData] = useState<{
     topupAmountUsd: number;
-    topupAmountMyr: number;
+    topupAmount: number;
+    currencyCode: string;
+    currencySymbol: string;
     productPrice: number;
     remainingBalance: number;
     meldUrl: string;
@@ -82,13 +95,21 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
   // Check if user is authenticated (has JWT token)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const hasToken = !!window.localStorage.getItem('jwtToken');
       setIsAuthenticated(hasToken);
     }
   }, [isConnected, address]);
+
+  // Clear FPX modal data when currency changes to force recalculation
+  useEffect(() => {
+    if (showFPXConfirmModal) {
+      setShowFPXConfirmModal(false);
+      setFpxConfirmData(null);
+    }
+  }, [selectedCurrency.code]);
 
   // Fetch user's active vouchers
   const { data: vouchersData } = useGetActiveVouchersQuery({
@@ -1275,21 +1296,39 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
 
     try {
       // Calculate the final price (with discount if applicable)
-      const finalPrice = hasDiscount ? discountedPriceUsd : productPriceUsd;
-      const MINIMUM_TOPUP_MYR = 51; // Meld minimum is 50.73 MYR, round up to 51
-      const USD_TO_MYR_RATE = 4.5; // Approximate exchange rate (1 USD = 4.5 MYR)
+      const finalPriceUsd = hasDiscount ? discountedPriceUsd : productPriceUsd;
+
+      // Get country code from currency
+      const COUNTRY_CODES: Record<string, string> = {
+        'MYR': 'MY',
+        'SGD': 'SG',
+        'USD': 'US',
+        'IDR': 'ID',
+        'PHP': 'PH',
+        'THB': 'TH',
+        'VND': 'VN',
+      };
+
+      // Use user's selected currency
+      const currencyCode = selectedCurrency.code;
+      const minimumAmount = MINIMUM_AMOUNTS[currencyCode] || MINIMUM_AMOUNTS['MYR'];
+      const countryCode = COUNTRY_CODES[currencyCode] || 'MY';
 
       console.log(`💳 Opening Meld for FPX/Card payment`);
       console.log(`   Product: ${productItem.displayName}`);
-      console.log(`   Price: $${finalPrice.toFixed(2)}`);
+      console.log(`   Price: $${finalPriceUsd.toFixed(2)} USD`);
+      console.log(`   Selected Currency: ${currencyCode}`);
 
-      // Calculate MYR amount for Meld
-      // Convert USD to MYR and ensure it meets Meld's minimum of 51 MYR
-      let topupAmountMyr = Math.ceil(finalPrice * USD_TO_MYR_RATE);
-      topupAmountMyr = Math.max(topupAmountMyr, MINIMUM_TOPUP_MYR); // Ensure minimum 51 MYR
+      // Convert product price to selected currency
+      const finalPriceInCurrency = convertPrice(finalPriceUsd, 'USD', currencyCode) || finalPriceUsd;
 
-      const topupAmountUsd = topupAmountMyr / USD_TO_MYR_RATE;
-      const remainingBalanceUsd = topupAmountUsd - finalPrice;
+      // Calculate top-up amount in selected currency
+      let topupAmount = Math.ceil(finalPriceInCurrency);
+      topupAmount = Math.max(topupAmount, minimumAmount); // Ensure minimum
+
+      // Convert back to USD for remaining balance calculation
+      const topupAmountUsd = convertPrice(topupAmount, currencyCode, 'USD') || topupAmount;
+      const remainingBalanceUsd = topupAmountUsd - finalPriceUsd;
 
       // Build Meld URL with dynamic amount
       const meldPublicKey = process.env.NEXT_PUBLIC_MELD_PUBLIC_KEY || 'WXETMuFUQmqqybHuRkSgxv:25B8LJHSfpG6LVjR2ytU5Cwh7Z4Sch2ocoU';
@@ -1300,19 +1339,21 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
         `&destinationCurrencyCode=SOL` + // Use SOL (Solana network only)
         `&walletAddress=${address}` +
         `&externalCustomerId=${meldCustomerId}` +
-        `&sourceAmount=${topupAmountMyr}` +
-        `&sourceCurrencyCode=MYR` +
-        `&countryCode=MY`; // Malaysia country code
+        `&sourceAmount=${topupAmount}` +
+        `&sourceCurrencyCode=${currencyCode}` +
+        `&countryCode=${countryCode}`;
 
       console.log(`   💳 Preparing Meld payment confirmation`);
-      console.log(`   Amount: ${topupAmountMyr} MYR (~$${topupAmountUsd.toFixed(2)} USD)`);
+      console.log(`   Amount: ${topupAmount} ${currencyCode} (~$${topupAmountUsd.toFixed(2)} USD)`);
       console.log(`   💡 User will receive SOL (Solana) to wallet: ${address}`);
 
       // Show confirmation modal before opening Meld
       setFpxConfirmData({
         topupAmountUsd,
-        topupAmountMyr,
-        productPrice: finalPrice,
+        topupAmount,
+        currencyCode,
+        currencySymbol: selectedCurrency.symbol,
+        productPrice: finalPriceUsd,
         remainingBalance: remainingBalanceUsd,
         meldUrl
       });
@@ -2218,7 +2259,9 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                   <div className="border-t border-white/10 pt-3">
                     <div className="flex justify-between mb-1">
                       <span className="text-sm text-gray-300">Top-up Amount:</span>
-                      <span className="text-lg font-bold text-blue-300">{fpxConfirmData.topupAmountMyr} MYR</span>
+                      <span className="text-lg font-bold text-blue-300">
+                        {fpxConfirmData.currencySymbol}{fpxConfirmData.topupAmount.toLocaleString()} {fpxConfirmData.currencyCode}
+                      </span>
                     </div>
                     <div className="text-right text-xs text-gray-400">
                       (~${fpxConfirmData.topupAmountUsd.toFixed(2)} USD)
@@ -2232,7 +2275,7 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
                         <span className="text-lg font-semibold text-green-400">${fpxConfirmData.remainingBalance.toFixed(2)} USD</span>
                       </div>
                       <p className="mt-2 text-xs text-gray-400 bg-blue-500/10 rounded p-2">
-                        ℹ️ Minimum top-up is 51 MYR. The remaining SOL balance will stay in your wallet after purchase.
+                        ℹ️ Minimum top-up is {MINIMUM_AMOUNTS[fpxConfirmData.currencyCode]} {fpxConfirmData.currencyCode}. The remaining SOL balance will stay in your wallet after purchase.
                       </p>
                     </div>
                   )}
