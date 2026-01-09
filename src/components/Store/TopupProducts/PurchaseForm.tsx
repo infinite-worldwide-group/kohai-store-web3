@@ -101,6 +101,14 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
     meldUrl: string;
   } | null>(null);
 
+  // Insufficient balance alert modal
+  const [showInsufficientBalanceModal, setShowInsufficientBalanceModal] = useState(false);
+  const [insufficientBalanceData, setInsufficientBalanceData] = useState<{
+    currentBalance: number;
+    requiredAmount: number;
+    shortfall: number;
+  } | null>(null);
+
   // Check if user is authenticated (has JWT token)
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
@@ -939,15 +947,27 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
         return;
       }
 
-      // STEP 2.5: Proceed directly to payment (no mandatory verification)
+      // STEP 2.5: Check USDT balance before proceeding
+      const paymentAmount = discountedPriceUsd < 0.01
+        ? parseFloat(discountedPriceUsd.toFixed(6))
+        : parseFloat(discountedPriceUsd.toFixed(2));
+
+      if (usdtBalance !== null && usdtBalance < paymentAmount) {
+        // Show insufficient balance modal
+        setInsufficientBalanceData({
+          currentBalance: usdtBalance,
+          requiredAmount: paymentAmount,
+          shortfall: paymentAmount - usdtBalance
+        });
+        setShowInsufficientBalanceModal(true);
+        setProcessingPayment(false);
+        return;
+      }
 
       // STEP 3: Calculate USDT payment amount (1:1 with USD)
       // For very small amounts (< 0.01), use 6 decimal places
       // For normal amounts, use 2 decimal places
       // Use discounted price if user has a tier discount
-      const paymentAmount = discountedPriceUsd < 0.01
-        ? parseFloat(discountedPriceUsd.toFixed(6))
-        : parseFloat(discountedPriceUsd.toFixed(2));
 
       console.log('💰 Payment Debug:', {
         productItemPrice: productItem.price,
@@ -2424,6 +2444,99 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
                 className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-cyan-600 shadow-lg"
               >
                 Proceed to Meld
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Insufficient Balance Alert Modal */}
+      {showInsufficientBalanceModal && insufficientBalanceData && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowInsufficientBalanceModal(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-lg bg-gradient-to-br from-red-900 to-orange-900 p-6 shadow-2xl border border-red-500/50">
+            {/* Header */}
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-2xl font-bold text-white flex items-center gap-2">
+                <svg className="h-8 w-8 text-red-400" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                </svg>
+                Insufficient Balance
+              </h3>
+              <button
+                onClick={() => setShowInsufficientBalanceModal(false)}
+                className="text-gray-400 hover:text-white transition"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="mb-4 space-y-4">
+              <div className="rounded-lg bg-white/10 p-4 backdrop-blur-sm">
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-300">Your USDT Balance:</span>
+                    <span className="text-lg font-bold text-red-300">{insufficientBalanceData.currentBalance.toFixed(2)} USDT</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-white/10 pt-3">
+                    <span className="text-sm text-gray-300">Required Amount:</span>
+                    <span className="text-lg font-bold text-white">{insufficientBalanceData.requiredAmount.toFixed(2)} USDT</span>
+                  </div>
+                  <div className="flex justify-between items-center border-t border-red-500/30 pt-3">
+                    <span className="text-sm font-semibold text-red-300">You Need:</span>
+                    <span className="text-xl font-bold text-red-400">{insufficientBalanceData.shortfall.toFixed(2)} USDT</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-red-500/10 border border-red-500/30 p-4">
+                <p className="text-sm text-red-200 mb-3 font-semibold">
+                  ⚠️ You don't have enough USDT to complete this purchase with your wallet.
+                </p>
+                <p className="text-sm text-red-200/80">
+                  Please choose one of the options below:
+                </p>
+              </div>
+
+              <div className="text-sm text-gray-300 space-y-2 bg-blue-500/10 border border-blue-500/30 rounded-lg p-3">
+                <p className="font-semibold text-blue-300 mb-2">💡 Suggested Actions:</p>
+                <p className="flex items-start gap-2">
+                  <span className="text-blue-400 flex-shrink-0">1.</span>
+                  <span>Top up USDT to your Solana wallet, or</span>
+                </p>
+                <p className="flex items-start gap-2">
+                  <span className="text-blue-400 flex-shrink-0">2.</span>
+                  <span>Use FPX/Card payment instead (no wallet balance needed)</span>
+                </p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowInsufficientBalanceModal(false)}
+                className="flex-1 rounded-lg bg-gradient-to-r from-gray-600 to-gray-700 px-4 py-3 text-sm font-semibold text-white transition hover:from-gray-700 hover:to-gray-800 shadow-lg"
+              >
+                Noted
+              </button>
+              <button
+                onClick={() => {
+                  setShowInsufficientBalanceModal(false);
+                  // Trigger FPX payment instead
+                  handleFPXPayment();
+                }}
+                className="flex-1 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 px-4 py-3 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-cyan-600 shadow-lg"
+              >
+                Use FPX/Card Instead
               </button>
             </div>
           </div>
