@@ -85,6 +85,9 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
   // Product selection confirmation (for compact view)
   const [productConfirmed, setProductConfirmed] = useState(false);
 
+  // Saved account selection confirmation (for hiding the list)
+  const [accountSectionCollapsed, setAccountSectionCollapsed] = useState(false);
+
   // FPX/Meld confirmation modal states
   const [showFPXConfirmModal, setShowFPXConfirmModal] = useState(false);
   const [fpxConfirmData, setFpxConfirmData] = useState<{
@@ -835,6 +838,10 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
         setValidationStatus('valid');
         setValidationMessage('Account loaded (pending verification)');
       }
+
+      // Collapse the saved accounts section after selection
+      setAccountSectionCollapsed(true);
+
       console.log('✅ Loaded saved game account:', accountId);
     }
   }, [filteredGameAccounts]);
@@ -1765,11 +1772,18 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
 
       {/* Purchase Form */}
       <div className="space-y-2">
-        {/* Saved Game Accounts Selector */}
+        {/* Saved Game Accounts Selector - Animated */}
         {isConnected && filteredGameAccounts.length > 0 && (
-          <div className="space-y-2 rounded-lg bg-green-500/10 border border-green-500/30 p-2">
-            <h4 className="text-xs font-semibold text-green-300">✨ Recent Used Accounts</h4>
-            <div className="space-y-1">
+          <div
+            className={`transition-all duration-500 ease-in-out overflow-hidden ${
+              accountSectionCollapsed
+                ? 'max-h-0 opacity-0 pointer-events-none'
+                : 'max-h-[1000px] opacity-100'
+            }`}
+          >
+            <div className="space-y-2 rounded-lg bg-green-500/10 border border-green-500/30 p-2 mb-2">
+              <h4 className="text-xs font-semibold text-green-300">✨ Recent Used Accounts</h4>
+              <div className="space-y-1">
               {filteredGameAccounts.map((account) => (
                 <div
                   key={account.id}
@@ -1832,6 +1846,7 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
                 </div>
               ))}
             </div>
+            </div>
           </div>
         )}
 
@@ -1840,6 +1855,16 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <h4 className="text-sm font-semibold opacity-70">Game Account Information</h4>
+              {/* Show Change Account button if accounts section is collapsed and user has saved accounts */}
+              {accountSectionCollapsed && isConnected && filteredGameAccounts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setAccountSectionCollapsed(false)}
+                  className="px-2 py-1 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 text-xs font-semibold text-blue-300 transition"
+                >
+                  🔄 Change Account
+                </button>
+              )}
               {/* Status Badge */}
               {validationStatus !== 'idle' && validationMessage && (
                 <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${
