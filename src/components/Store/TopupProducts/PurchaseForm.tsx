@@ -25,9 +25,10 @@ interface PurchaseFormProps {
   productItem: TopupProductItemFragment;
   userInput?: any; // JSON schema from product
   onChangeProduct?: () => void; // Callback to change product selection
+  onGameAccountFilled?: (filled: boolean) => void; // Callback when game account info is filled
 }
 
-const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormProps) => {
+const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFilled }: PurchaseFormProps) => {
   const [createOrder, { error }] = useCreateOrderMutation();
   const [authenticateWallet] = useAuthenticateWalletMutation();
   const [createGameAccount] = useCreateGameAccountMutation();
@@ -122,6 +123,16 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormP
   useEffect(() => {
     setProductConfirmed(true);
   }, [productItem.id]); // When product changes, auto-confirm it
+
+  // Notify parent when game account info is filled
+  useEffect(() => {
+    if (onGameAccountFilled) {
+      // Check if userData has any required fields filled
+      const hasRequiredFields = Object.keys(userData).length > 0 &&
+        Object.values(userData).some(value => value && String(value).trim() !== '');
+      onGameAccountFilled(hasRequiredFields);
+    }
+  }, [userData, onGameAccountFilled]);
 
   // Fetch user's active vouchers
   const { data: vouchersData } = useGetActiveVouchersQuery({

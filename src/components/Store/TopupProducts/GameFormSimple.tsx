@@ -8,12 +8,13 @@ import PurchaseForm from "./PurchaseForm";
 const GameFormSimple = (props: { item: TopupProductFragment; slug?: string }) => {
   const { topupProductItems, userInput } = props.item;
   const [selectedItem, setSelectedItem] = useState<any>(null);
+  const [hasGameAccountInfo, setHasGameAccountInfo] = useState(false);
 
   return (
     <>
       {/* Step Indicator */}
-      <div className="mb-6 flex items-center gap-4">
-        {/* Step 1 */}
+      <div className="mb-6 flex items-center gap-2">
+        {/* Step 1 - Select Product */}
         <div className={`flex items-center gap-2 transition-all duration-300 ${!selectedItem ? 'opacity-100' : 'opacity-50'}`}>
           <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold transition-all duration-300 ${
             !selectedItem
@@ -22,7 +23,7 @@ const GameFormSimple = (props: { item: TopupProductFragment; slug?: string }) =>
           }`}>
             1
           </div>
-          <span className={`text-sm font-semibold transition-all duration-300 ${!selectedItem ? 'text-white' : 'text-white/60'}`}>
+          <span className={`hidden sm:inline text-sm font-semibold transition-all duration-300 ${!selectedItem ? 'text-white' : 'text-white/60'}`}>
             Select Product
           </span>
         </div>
@@ -30,17 +31,34 @@ const GameFormSimple = (props: { item: TopupProductFragment; slug?: string }) =>
         {/* Connector Line */}
         <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-500/50 to-purple-500/50 rounded-full" />
 
-        {/* Step 2 */}
-        <div className={`flex items-center gap-2 transition-all duration-300 ${selectedItem ? 'opacity-100' : 'opacity-50'}`}>
+        {/* Step 2 - Key in Game Account */}
+        <div className={`flex items-center gap-2 transition-all duration-300 ${selectedItem && !hasGameAccountInfo ? 'opacity-100' : 'opacity-50'}`}>
           <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold transition-all duration-300 ${
-            selectedItem
+            selectedItem && !hasGameAccountInfo
               ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white scale-110 shadow-lg'
               : 'bg-white/10 text-white/60'
           }`}>
             2
           </div>
-          <span className={`text-sm font-semibold transition-all duration-300 ${selectedItem ? 'text-white' : 'text-white/60'}`}>
-            Complete Purchase
+          <span className={`hidden sm:inline text-sm font-semibold transition-all duration-300 ${selectedItem && !hasGameAccountInfo ? 'text-white' : 'text-white/60'}`}>
+            Game Account
+          </span>
+        </div>
+
+        {/* Connector Line */}
+        <div className="flex-1 h-0.5 bg-gradient-to-r from-blue-500/50 to-purple-500/50 rounded-full" />
+
+        {/* Step 3 - Complete Purchase */}
+        <div className={`flex items-center gap-2 transition-all duration-300 ${hasGameAccountInfo ? 'opacity-100' : 'opacity-50'}`}>
+          <div className={`flex h-8 w-8 items-center justify-center rounded-full font-bold transition-all duration-300 ${
+            hasGameAccountInfo
+              ? 'bg-gradient-to-r from-blue-500 to-purple-500 text-white scale-110 shadow-lg'
+              : 'bg-white/10 text-white/60'
+          }`}>
+            3
+          </div>
+          <span className={`hidden sm:inline text-sm font-semibold transition-all duration-300 ${hasGameAccountInfo ? 'text-white' : 'text-white/60'}`}>
+            Payment
           </span>
         </div>
       </div>
@@ -82,7 +100,11 @@ const GameFormSimple = (props: { item: TopupProductFragment; slug?: string }) =>
           <PurchaseForm
             productItem={selectedItem}
             userInput={userInput}
-            onChangeProduct={() => setSelectedItem(null)}
+            onChangeProduct={() => {
+              setSelectedItem(null);
+              setHasGameAccountInfo(false);
+            }}
+            onGameAccountFilled={(filled: boolean) => setHasGameAccountInfo(filled)}
           />
         )}
       </div>
