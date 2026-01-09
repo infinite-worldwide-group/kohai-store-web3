@@ -24,9 +24,10 @@ const MINIMUM_AMOUNTS: Record<string, number> = {
 interface PurchaseFormProps {
   productItem: TopupProductItemFragment;
   userInput?: any; // JSON schema from product
+  onChangeProduct?: () => void; // Callback to change product selection
 }
 
-const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
+const PurchaseForm = ({ productItem, userInput, onChangeProduct }: PurchaseFormProps) => {
   const [createOrder, { error }] = useCreateOrderMutation();
   const [authenticateWallet] = useAuthenticateWalletMutation();
   const [createGameAccount] = useCreateGameAccountMutation();
@@ -113,6 +114,11 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
       setFpxConfirmData(null);
     }
   }, [selectedCurrency.code]);
+
+  // Auto-confirm product when first selected (compact view by default)
+  useEffect(() => {
+    setProductConfirmed(true);
+  }, [productItem.id]); // When product changes, auto-confirm it
 
   // Fetch user's active vouchers
   const { data: vouchersData } = useGetActiveVouchersQuery({
@@ -1545,7 +1551,13 @@ const PurchaseForm = ({ productItem, userInput }: PurchaseFormProps) => {
               </div>
             </div>
             <button
-              onClick={() => setProductConfirmed(false)}
+              onClick={() => {
+                setProductConfirmed(false);
+                // If callback provided, call it to show all products again
+                if (onChangeProduct) {
+                  onChangeProduct();
+                }
+              }}
               className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-semibold text-white transition"
             >
               Change

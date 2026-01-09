@@ -11,27 +11,35 @@ const GameFormSimple = (props: { item: TopupProductFragment; slug?: string }) =>
 
   return (
     <>
-      {/* Product Items Grid - Original Design */}
-      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {topupProductItems?.map((item, index) => (
-          <TopupProductItem
-            item={item}
-            selectedItem={selectedItem}
-            setSelectedItem={setSelectedItem}
-            key={`item-${index}`}
-            showCost={false}
-          />
-        ))}
-      </div>
+      {/* Product Items Grid - Only show when no item is selected */}
+      {!selectedItem && (
+        <>
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {topupProductItems?.map((item, index) => (
+              <TopupProductItem
+                item={item}
+                selectedItem={selectedItem}
+                setSelectedItem={setSelectedItem}
+                key={`item-${index}`}
+                showCost={false}
+              />
+            ))}
+          </div>
 
-      {(!topupProductItems || topupProductItems.length === 0) && (
-        <p className="text-center text-sm opacity-60">No packages available</p>
+          {(!topupProductItems || topupProductItems.length === 0) && (
+            <p className="text-center text-sm opacity-60">No packages available</p>
+          )}
+        </>
       )}
 
       {/* Purchase Form - Only shown when item is selected */}
       {selectedItem && (
         <div className="mt-6">
-          <PurchaseForm productItem={selectedItem} userInput={userInput} />
+          <PurchaseForm
+            productItem={selectedItem}
+            userInput={userInput}
+            onChangeProduct={() => setSelectedItem(null)}
+          />
         </div>
       )}
     </>
