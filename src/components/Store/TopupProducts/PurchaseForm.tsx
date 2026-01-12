@@ -1845,7 +1845,7 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
                               console.log('🔍 Verifying account:', account.id);
                               const result = await validateGameAccount({
                                 variables: {
-                                  gameAccountId: account.id
+                                  gameAccountId: parseInt(account.id)
                                 }
                               });
                               if (result.data?.validateGameAccountMutation?.gameAccount) {
@@ -1895,12 +1895,12 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
                       <>
                         <div className="flex items-center gap-2">
                           <span className="text-blue-300 font-semibold whitespace-nowrap">Game ID:</span>
-                          <span className="font-mono text-white truncate" title={account.accountId}>{account.accountId}</span>
+                          <span className="font-mono text-white truncate" title={account.accountId || undefined}>{account.accountId}</span>
                         </div>
                         {account.serverId && (
                           <div className="flex items-center gap-2">
                             <span className="text-purple-300 font-semibold whitespace-nowrap">Server:</span>
-                            <span className="text-white truncate" title={account.serverId}>{account.serverId}</span>
+                            <span className="text-white truncate" title={account.serverId || undefined}>{account.serverId}</span>
                           </div>
                         )}
                       </>
