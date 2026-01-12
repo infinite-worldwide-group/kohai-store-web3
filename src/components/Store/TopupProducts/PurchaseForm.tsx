@@ -1808,20 +1808,21 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
                 : 'max-h-[1000px] opacity-100'
             }`}
           >
-            <div className="space-y-2 rounded-lg bg-green-500/10 border border-green-500/30 p-2 mb-2">
+            <div className="space-y-2 rounded-lg bg-green-500/10 border border-green-500/30 p-2 mb-2 mx-4">
               <h4 className="text-xs font-semibold text-green-300">✨ Recent Used Accounts</h4>
               <div className="space-y-1">
               {filteredGameAccounts.map((account) => (
                 <div
                   key={account.id}
-                  className={`flex items-center justify-between rounded-lg p-2 transition ${
+                  className={`rounded-lg p-2 transition ${
                     selectedGameAccountId === account.id
                       ? 'bg-green-500/20 ring-2 ring-green-400'
                       : 'bg-white/5 hover:bg-white/10'
                   }`}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                  {/* Row 1: Account Name and Buttons */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
                       <span className="font-medium text-white">
                         {account.displayName || account.inGameName || 'Saved Account'}
                       </span>
@@ -1829,46 +1830,50 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
                         <span className="text-xs text-green-400">✓ Verified</span>
                       )}
                     </div>
-                    <div className="text-xs space-y-1">
-                      {/* Display all fields from userData dynamically */}
-                      {account.userData && typeof account.userData === 'object' && Object.entries(account.userData).map(([key, value]) => (
-                        <div key={key} className="flex items-center gap-2">
-                          <span className="text-blue-300 font-semibold">{key}:</span>
-                          <span className="font-mono text-white">{String(value)}</span>
-                        </div>
-                      ))}
-                      {/* Fallback if no userData */}
-                      {(!account.userData || Object.keys(account.userData).length === 0) && (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-blue-300 font-semibold">Game ID:</span>
-                            <span className="font-mono text-white">{account.accountId}</span>
-                          </div>
-                          {account.serverId && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-purple-300 font-semibold">Server:</span>
-                              <span className="text-white">{account.serverId}</span>
-                            </div>
-                          )}
-                        </>
-                      )}
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleLoadGameAccount(account.id)}
+                        className="rounded-lg bg-blue-500/20 px-2.5 py-1.5 text-xs text-blue-300 hover:bg-blue-500/30 transition"
+                        title="Select this account"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteGameAccount(account.id)}
+                        className="rounded-lg bg-red-500/20 px-2.5 py-1.5 text-xs text-red-300 hover:bg-red-500/30 transition"
+                        title="Delete this account"
+                      >
+                        ×
+                      </button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleLoadGameAccount(account.id)}
-                      className="rounded-lg bg-blue-500/20 px-4 py-1.5 text-sm text-blue-300 hover:bg-blue-500/30 transition"
-                    >
-                      Select
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteGameAccount(account.id)}
-                      className="rounded-lg bg-red-500/20 px-3 py-1.5 text-sm text-red-300 hover:bg-red-500/30 transition"
-                    >
-                      Delete
-                    </button>
+
+                  {/* Row 2: Account Details */}
+                  <div className="text-xs space-y-1">
+                    {/* Display all fields from userData dynamically */}
+                    {account.userData && typeof account.userData === 'object' && Object.entries(account.userData).map(([key, value]) => (
+                      <div key={key} className="flex items-center gap-2">
+                        <span className="text-blue-300 font-semibold whitespace-nowrap">{key}:</span>
+                        <span className="font-mono text-white truncate" title={String(value)}>{String(value)}</span>
+                      </div>
+                    ))}
+                    {/* Fallback if no userData */}
+                    {(!account.userData || Object.keys(account.userData).length === 0) && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-300 font-semibold whitespace-nowrap">Game ID:</span>
+                          <span className="font-mono text-white truncate" title={account.accountId}>{account.accountId}</span>
+                        </div>
+                        {account.serverId && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-purple-300 font-semibold whitespace-nowrap">Server:</span>
+                            <span className="text-white truncate" title={account.serverId}>{account.serverId}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
