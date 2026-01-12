@@ -8,7 +8,7 @@ import { useTopupProductsQuery, TopupProductFragment } from "graphql/generated/g
 import { parseProductTitle } from "@/utils/productGrouping";
 import { filterProductsByCategory } from "@/utils/productCategorization";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import TopupProductListItem from "./ListItem";
 import RegionSelectorModal from "./RegionSelectorModal";
 import CategoryDisplay from "./CategoryDisplay";
@@ -60,13 +60,14 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     variables: {
       categoryId: undefined, // Don't filter by category in backend - we'll do it client-side
       page: page,
-      perPage: 100,
+      perPage: 50, // Reduced from 100 for faster initial load
       countryCode: "MY",
       forStore: true,
       search: search,
       genre: genre,
     },
-    fetchPolicy: "network-only", // Always fetch fresh prices from server
+    fetchPolicy: "cache-and-network", // Use cache first for instant display, then fetch fresh
+    nextFetchPolicy: "cache-first", // After first fetch, prefer cache
     pollInterval: 60000, // Refresh prices every 60 seconds
     onCompleted: (data) => {
       console.log("Query completed successfully:", data);
@@ -76,32 +77,23 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     },
   });
 
-  // Deduplicate ALL products first (for category view)
-  // Count regions per game across all products
-  const allRegionCountMap = new Map<string, number>();
-  (data?.topupProducts || []).forEach(product => {
-    const { gameName } = parseProductTitle(product.title);
-    allRegionCountMap.set(gameName, (allRegionCountMap.get(gameName) || 0) + 1);
-  });
+  // Deduplicate ALL products first (for category view) - Memoized for performance
+  const allDedupedProducts = useMemo(() => {
+    const products = data?.topupProducts || [];
 
-  // Deduplicate all products
-  const allDedupedProducts = Array.from(
-    (data?.topupProducts || []).reduce((map, product) => {
-      const { gameName, regionCode } = parseProductTitle(product.title);
+    // Count regions per game across all products
+    const allRegionCountMap = new Map<string, number>();
+    products.forEach(product => {
+      const { gameName } = parseProductTitle(product.title);
+      allRegionCountMap.set(gameName, (allRegionCountMap.get(gameName) || 0) + 1);
+    });
 
-      if (!map.has(gameName)) {
-        const regionCount = allRegionCountMap.get(gameName) || 0;
-        const displayProduct = { ...product } as TopupProductFragment;
+    // Deduplicate all products
+    return Array.from(
+      products.reduce((map, product) => {
+        const { gameName, regionCode } = parseProductTitle(product.title);
 
-        if (regionCount > 1) {
-          displayProduct.title = gameName;
-        }
-
-        map.set(gameName, displayProduct);
-      } else {
-        const current = map.get(gameName)!;
-        const currentRegion = parseProductTitle(current.title).regionCode;
-        if (regionCode < currentRegion) {
+        if (!map.has(gameName)) {
           const regionCount = allRegionCountMap.get(gameName) || 0;
           const displayProduct = { ...product } as TopupProductFragment;
 
@@ -110,88 +102,107 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
           }
 
           map.set(gameName, displayProduct);
+        } else {
+          const current = map.get(gameName)!;
+          const currentRegion = parseProductTitle(current.title).regionCode;
+          if (regionCode < currentRegion) {
+            const regionCount = allRegionCountMap.get(gameName) || 0;
+            const displayProduct = { ...product } as TopupProductFragment;
+
+            if (regionCount > 1) {
+              displayProduct.title = gameName;
+            }
+
+            map.set(gameName, displayProduct);
+          }
         }
-      }
-      return map;
-    }, new Map<string, TopupProductFragment>()).values()
-  );
+        return map;
+      }, new Map<string, TopupProductFragment>()).values()
+    );
+  }, [data?.topupProducts]);
 
-  // Filter products by selected category and platform using smart categorization logic
-  console.log('📊 TopupProducts - Filtering:', {
-    categoryId,
-    selectedPlatform,
-    favorites,
-    favoritesCount: favorites.length,
-    totalProducts: data?.topupProducts?.length,
-    showCategoryView: !categoryId
-  });
+  // Filter products by selected category and platform - Memoized for performance
+  const filteredProducts = useMemo(() => {
+    console.log('📊 TopupProducts - Filtering:', {
+      categoryId,
+      selectedPlatform,
+      favorites,
+      favoritesCount: favorites.length,
+      totalProducts: data?.topupProducts?.length,
+      showCategoryView: !categoryId
+    });
 
-  const filteredProducts = filterProductsByCategory(
-    data?.topupProducts || [],
-    (categoryId as CategoryType) || null,
-    selectedPlatform,
-    favorites // Pass favorites list for "favourite" category
-  );
+    const filtered = filterProductsByCategory(
+      data?.topupProducts || [],
+      (categoryId as CategoryType) || null,
+      selectedPlatform,
+      favorites // Pass favorites list for "favourite" category
+    );
 
-  console.log('✅ Filtered products result:', {
-    categoryId,
-    filteredCount: filteredProducts.length,
-    sampleProducts: filteredProducts.slice(0, 3).map(p => ({ id: p.id, title: p.title }))
-  });
+    console.log('✅ Filtered products result:', {
+      categoryId,
+      filteredCount: filtered.length,
+      sampleProducts: filtered.slice(0, 3).map(p => ({ id: p.id, title: p.title }))
+    });
 
-  // Group products by game name and deduplicate (for grid view)
-  // First, count regions per game
-  const regionCountMap = new Map<string, number>();
-  filteredProducts.forEach(product => {
-    const { gameName } = parseProductTitle(product.title);
-    regionCountMap.set(gameName, (regionCountMap.get(gameName) || 0) + 1);
-  });
+    return filtered;
+  }, [data?.topupProducts, categoryId, selectedPlatform, favorites]);
 
-  // Then group products, modifying title based on region count
-  const dedupedProducts = Array.from(
-    filteredProducts.reduce((map, product) => {
-      const { gameName, regionCode } = parseProductTitle(product.title);
+  // Group products by game name and deduplicate (for grid view) - Memoized for performance
+  const groupedProducts = useMemo(() => {
+    // First, count regions per game
+    const regionCountMap = new Map<string, number>();
+    filteredProducts.forEach(product => {
+      const { gameName } = parseProductTitle(product.title);
+      regionCountMap.set(gameName, (regionCountMap.get(gameName) || 0) + 1);
+    });
 
-      if (!map.has(gameName)) {
-        // Create a modified product based on region count
-        const regionCount = regionCountMap.get(gameName) || 0;
-        const displayProduct = { ...product } as TopupProductFragment;
+    // Then group products, modifying title based on region count
+    const dedupedProducts = Array.from(
+      filteredProducts.reduce((map, product) => {
+        const { gameName, regionCode } = parseProductTitle(product.title);
 
-        // If multiple regions, show only game name (no region)
-        // If single region, show full title with region
-        if (regionCount > 1) {
-          displayProduct.title = gameName;
-        }
-        // else: keep original title with region code
-
-        map.set(gameName, displayProduct);
-      } else {
-        // Keep product with earliest region code (ascending)
-        const current = map.get(gameName)!;
-        const currentRegion = parseProductTitle(current.title).regionCode;
-        if (regionCode < currentRegion) {
+        if (!map.has(gameName)) {
+          // Create a modified product based on region count
           const regionCount = regionCountMap.get(gameName) || 0;
           const displayProduct = { ...product } as TopupProductFragment;
 
+          // If multiple regions, show only game name (no region)
+          // If single region, show full title with region
           if (regionCount > 1) {
             displayProduct.title = gameName;
           }
+          // else: keep original title with region code
 
           map.set(gameName, displayProduct);
-        }
-      }
-      return map;
-    }, new Map<string, TopupProductFragment>()).values()
-  );
+        } else {
+          // Keep product with earliest region code (ascending)
+          const current = map.get(gameName)!;
+          const currentRegion = parseProductTitle(current.title).regionCode;
+          if (regionCode < currentRegion) {
+            const regionCount = regionCountMap.get(gameName) || 0;
+            const displayProduct = { ...product } as TopupProductFragment;
 
-  // Sort products: favorites first, then others
-  const groupedProducts = (dedupedProducts as TopupProductFragment[]).sort((a, b) => {
-    const aIsFav = isFavorite(a.id);
-    const bIsFav = isFavorite(b.id);
-    if (aIsFav && !bIsFav) return -1;
-    if (!aIsFav && bIsFav) return 1;
-    return 0;
-  });
+            if (regionCount > 1) {
+              displayProduct.title = gameName;
+            }
+
+            map.set(gameName, displayProduct);
+          }
+        }
+        return map;
+      }, new Map<string, TopupProductFragment>()).values()
+    );
+
+    // Sort products: favorites first, then others
+    return (dedupedProducts as TopupProductFragment[]).sort((a, b) => {
+      const aIsFav = isFavorite(a.id);
+      const bIsFav = isFavorite(b.id);
+      if (aIsFav && !bIsFav) return -1;
+      if (!aIsFav && bIsFav) return 1;
+      return 0;
+    });
+  }, [filteredProducts, isFavorite]);
 
   // Debug logging
   console.log("TopupProducts Debug:", {
@@ -382,9 +393,17 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
       )}
 
       {loading && !data && (
-        <div className="p-8 text-center">
-          <p>Loading products... (query in progress)</p>
-          <p className="mt-2 text-sm opacity-60">If this takes too long, check browser console for errors</p>
+        <div className="space-y-4">
+          {/* Loading Skeleton */}
+          <div className="grid grid-cols-3 gap-2 md:grid-cols-5 lg:grid-cols-5 md:gap-4">
+            {[...Array(20)].map((_, index) => (
+              <div key={`skeleton-${index}`} className="animate-pulse">
+                <div className="rounded-lg bg-white/5 aspect-square mb-2"></div>
+                <div className="h-4 bg-white/5 rounded mb-2"></div>
+                <div className="h-3 bg-white/5 rounded w-2/3"></div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
