@@ -26,6 +26,10 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
   const searchParams = useSearchParams();
   const [lastActivity, setLastActivity] = useState(Date.now());
 
+  // Infinite scroll state
+  const [displayLimit, setDisplayLimit] = useState(20); // Show 20 products initially
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const [categoryId, setCategoryId] = useState<string | undefined | null>(
     searchParams.get("category_id"),
   );
@@ -221,6 +225,38 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
     setLastActivity(Date.now());
   }, []);
 
+  // Load more products when scrolling near bottom
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isLoadingMore) return;
+
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollHeight = document.documentElement.scrollHeight;
+      const clientHeight = document.documentElement.clientHeight;
+
+      // Load more when user scrolls to within 500px of bottom
+      if (scrollTop + clientHeight >= scrollHeight - 500) {
+        const totalProducts = showCategoryView ? allDedupedProducts.length : groupedProducts.length;
+
+        if (displayLimit < totalProducts) {
+          setIsLoadingMore(true);
+          // Simulate loading delay for smooth UX
+          setTimeout(() => {
+            setDisplayLimit(prev => Math.min(prev + 20, totalProducts));
+            setIsLoadingMore(false);
+          }, 300);
+        }
+      }
+    };
+
+    if (typeof window === 'undefined') return;
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [isLoadingMore, displayLimit, showCategoryView, allDedupedProducts.length, groupedProducts.length]);
+
   // Handle region selection
   const handleRegionSelect = useCallback(
     (product: TopupProductFragment) => {
@@ -287,6 +323,11 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
       });
     };
   }, [handleActivity]);
+
+  // Reset display limit when filters change
+  useEffect(() => {
+    setDisplayLimit(20);
+  }, [categoryId, search, genre, selectedPlatform]);
 
   // Auto-refresh product list to ensure fresh prices
   useEffect(() => {
@@ -359,7 +400,7 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
           {showCategoryView ? (
             <CategoryDisplay
               key={JSON.stringify(favorites)}
-              products={allDedupedProducts}
+              products={allDedupedProducts.slice(0, displayLimit)}
               loading={loading}
               favouriteIds={favorites}
               isPremium={store?.isPremium}
@@ -376,7 +417,7 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
                   No products found {categoryId && `in category: ${categoryId.replace("_", " ")}`}
                 </p>
               ) : (
-                groupedProducts.map((item, index) => {
+                groupedProducts.slice(0, displayLimit).map((item, index) => {
                   if (store?.isPremium) {
                     return (
                       <PremiumListItem
@@ -402,6 +443,35 @@ const TopupProducts = (props: { from?: string; slug?: string }) => {
                   }
                 })
               )}
+            </div>
+          )}
+
+          {/* Loading indicator when loading more */}
+          {isLoadingMore && (
+            <div className="py-8 text-center">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+              <p className="mt-2 text-sm text-gray-400">Loading more products...</p>
+            </div>
+          )}
+
+          {/* Show load more button if there are more products */}
+          {!isLoadingMore && displayLimit < (showCategoryView ? allDedupedProducts.length : groupedProducts.length) && (
+            <div className="py-8 text-center">
+              <button
+                onClick={() => setDisplayLimit(prev => Math.min(prev + 20, showCategoryView ? allDedupedProducts.length : groupedProducts.length))}
+                className="rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-6 py-3 text-sm font-semibold text-white transition hover:from-blue-600 hover:to-purple-600"
+              >
+                Load More ({(showCategoryView ? allDedupedProducts.length : groupedProducts.length) - displayLimit} remaining)
+              </button>
+            </div>
+          )}
+
+          {/* Show total count */}
+          {displayLimit >= (showCategoryView ? allDedupedProducts.length : groupedProducts.length) && (
+            <div className="py-6 text-center">
+              <p className="text-sm text-gray-400">
+                Showing all {showCategoryView ? allDedupedProducts.length : groupedProducts.length} products
+              </p>
             </div>
           )}
         </>
