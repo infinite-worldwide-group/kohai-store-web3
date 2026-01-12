@@ -251,6 +251,20 @@ const WalletButton = () => {
     }
   }, [isConnected, address, getTokenBalance]);
 
+  // Close dropdown when user scrolls
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const handleScroll = () => {
+      setShowDropdown(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [showDropdown]);
+
   // Shorten address for display (0x1234...5678)
   const shortenAddress = (addr: string) => {
     if (!addr) return "";
