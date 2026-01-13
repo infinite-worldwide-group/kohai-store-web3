@@ -413,10 +413,15 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       // Clear JWT token and user data immediately
       if (typeof window !== 'undefined') {
         window.localStorage.removeItem('jwtToken');
+        window.localStorage.removeItem('jwtTokenAddress');
       }
 
       // Clear user context
       setUser(null);
+
+      // 🔥 CRITICAL: Clear Apollo cache to prevent old user data from persisting
+      console.log('🗑️ Clearing Apollo cache on disconnect...');
+      clearApolloCache();
 
       // Use AppKit's official disconnect method for Solana namespace
       await modal.disconnect();
