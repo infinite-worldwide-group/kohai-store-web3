@@ -126,7 +126,7 @@ const UserTierDisplay: React.FC<UserTierDisplayProps> = ({
           className={styles.readMoreButton}
           type="button"
         >
-          ℹ️ Read More
+          Read More
         </button>
       </div>
 
