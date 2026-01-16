@@ -1705,13 +1705,19 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
             onClick={() => window.location.href = `/orders/${orderResult.id}`}
             className="w-full rounded-lg bg-gradient-to-r from-blue-500 to-purple-500 px-4 py-2 font-semibold transition hover:from-blue-600 hover:to-purple-600"
           >
-            View Order Details
+            View Receipt
           </button>
           <button
-            onClick={() => setOrderResult(null)}
+            onClick={() => window.location.href = '/orders'}
             className="w-full rounded-lg bg-white/10 px-4 py-2 font-semibold transition hover:bg-white/20"
           >
-            Create Another Order
+            My Orders
+          </button>
+          <button
+            onClick={() => window.location.href = '/'}
+            className="w-full rounded-lg bg-white/5 px-4 py-2 font-semibold transition hover:bg-white/10"
+          >
+            Browse Products
           </button>
         </div>
       </div>
