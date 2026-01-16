@@ -1661,19 +1661,43 @@ const PurchaseForm = ({ productItem, userInput, onChangeProduct, onGameAccountFi
           )}
 
           {/* Display User Input Data (Game Account Info) */}
-          {orderResult.metadata && Object.keys(orderResult.metadata).length > 0 && (
-            <>
-              <div className="mt-4 pt-4 border-t border-white/20">
-                <h4 className="text-sm font-semibold opacity-70 mb-2">Game Account Details:</h4>
-              </div>
-              {Object.entries(orderResult.metadata).map(([key, value]) => (
-                <div key={key} className="flex justify-between border-b border-white/10 pb-2">
-                  <span className="text-sm opacity-70">{key}:</span>
-                  <span className="text-sm font-semibold">{String(value)}</span>
+          {orderResult.metadata && (() => {
+            // Parse metadata if it's a string
+            let metadataObj: Record<string, any> = {};
+            try {
+              if (typeof orderResult.metadata === 'string') {
+                metadataObj = JSON.parse(orderResult.metadata);
+              } else if (typeof orderResult.metadata === 'object' && orderResult.metadata !== null) {
+                metadataObj = orderResult.metadata as Record<string, any>;
+              } else {
+                return null;
+              }
+            } catch (_e) {
+              return null;
+            }
+
+            // Filter out internal/system fields
+            const internalFields = ['sn', 'trx_date', 'callback_received_at', 'provider_response', 'raw_response'];
+            const userFields = Object.entries(metadataObj).filter(
+              ([key]) => !internalFields.includes(key) && !key.startsWith('_')
+            );
+
+            if (userFields.length === 0) return null;
+
+            return (
+              <>
+                <div className="mt-4 pt-4 border-t border-white/20">
+                  <h4 className="text-sm font-semibold opacity-70 mb-2">Game Account Details:</h4>
                 </div>
-              ))}
-            </>
-          )}
+                {userFields.map(([key, value]) => (
+                  <div key={key} className="flex justify-between border-b border-white/10 pb-2">
+                    <span className="text-sm opacity-70">{key}:</span>
+                    <span className="text-sm font-semibold">{String(value)}</span>
+                  </div>
+                ))}
+              </>
+            );
+          })()}
         </div>
 
         <div className="mt-4 space-y-2">
