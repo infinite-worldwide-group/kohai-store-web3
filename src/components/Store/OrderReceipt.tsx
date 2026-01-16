@@ -283,13 +283,13 @@ const OrderReceipt = (props: { id: string; slug?: string }) => {
               className="w-full rounded bg-gradient-to-r from-blue-500 to-purple-500 px-8 py-3 font-semibold text-white transition hover:from-blue-600 hover:to-purple-600"
               onClick={() => router.push("/orders")}
             >
-              View All Orders
+              My Orders
             </button>
             <button
               className="w-full rounded bg-white/10 px-8 py-3 font-semibold transition hover:bg-white/20"
               onClick={() => router.push("/")}
             >
-              Back to Home
+              Browse Products
             </button>
           </div>
         </div>
