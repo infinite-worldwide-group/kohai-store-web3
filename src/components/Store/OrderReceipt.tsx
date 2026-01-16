@@ -93,10 +93,11 @@ const OrderReceipt = (props: { id: string; slug?: string }) => {
   }
 
   const order = data.order;
-  const isPending = order.status.toLowerCase() === "pending";
-  const isPaid = order.status.toLowerCase() === "paid";
-  const isCompleted = order.status.toLowerCase() === "completed";
-  const isFailed = order.status.toLowerCase() === "failed";
+  const statusLower = order.status.toLowerCase();
+  const isPending = statusLower === "pending";
+  const isPaid = statusLower === "paid";
+  const isCompleted = statusLower === "completed" || statusLower === "succeeded";
+  const isFailed = statusLower === "failed";
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-boxdark">
