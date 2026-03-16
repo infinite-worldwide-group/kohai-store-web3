@@ -50,6 +50,7 @@ const RecentOrderBar = () => {
   const { data } = useMyOrdersQuery({
     variables: { limit: 1 },
     skip: !hasToken,
+    pollInterval: 2 * 60 * 1000, // refresh every 2 minutes
   });
 
   if (!hasToken) return null;
