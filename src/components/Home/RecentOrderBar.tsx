@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useMyOrdersQuery } from "graphql/generated/graphql";
-import { useUser } from "@/contexts/UserContext";
 
 const statusConfig: Record<
   string,
@@ -41,13 +41,18 @@ const statusConfig: Record<
 };
 
 const RecentOrderBar = () => {
-  const { isAuthenticated } = useUser();
-  const { data, loading } = useMyOrdersQuery({
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    setHasToken(!!window.localStorage.getItem("jwtToken"));
+  }, []);
+
+  const { data } = useMyOrdersQuery({
     variables: { limit: 1 },
-    skip: !isAuthenticated,
+    skip: !hasToken,
   });
 
-  if (!isAuthenticated || loading) return null;
+  if (!hasToken) return null;
 
   const order = data?.myOrders?.[0];
   if (!order) return null;
